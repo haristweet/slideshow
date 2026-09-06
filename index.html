@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ローカルフォルダ スライドショー</title>
+<style>
+  :root{
+    --bg:#0a0b0d; --fg:#e9eaee; --dim:#8b909b; --line:#23252b; --acc:#6aa8ff;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);
+    font:14px/1.6 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+    -webkit-user-select:none;user-select:none;overflow:hidden}
+  button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+
+  /* ---------- ステージ ---------- */
+  #stage{position:fixed;inset:0;background:#000}
+  .layer{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    opacity:0;transition:opacity .45s ease}
+  .layer.on{opacity:1}
+  .layer img,.layer video{max-width:100%;max-height:100%;object-fit:contain;display:block}
+  body.cover .layer img,body.cover .layer video{width:100%;height:100%;object-fit:cover;max-width:none;max-height:none}
+
+  /* ---------- 進捗バー ---------- */
+  #prog{position:fixed;top:0;left:0;height:2px;width:0;background:var(--acc);
+    transition:opacity .3s;z-index:5;pointer-events:none}
+  body.idle #prog{opacity:0}
+
+  /* ---------- 情報 ---------- */
+  #info{position:fixed;top:14px;left:16px;z-index:6;max-width:60vw;
+    font-size:12px;color:#cfd3db;text-shadow:0 1px 6px rgba(0,0,0,.9);transition:opacity .3s}
+  #info b{font-weight:500}
+  #info span{color:var(--dim)}
+
+  /* ---------- コントロールバー ---------- */
+  #ui{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:6;
+    display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:14px;
+    background:rgba(20,21,25,.82);border:1px solid var(--line);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    box-shadow:0 8px 30px rgba(0,0,0,.5);transition:opacity .3s,transform .3s;
+    flex-wrap:wrap;justify-content:center;max-width:calc(100vw - 24px)}
+  body.idle #ui,body.idle #info{opacity:0;pointer-events:none}
+  body.idle #stage{cursor:none}
+  body.hideui #ui,body.hideui #info,body.hideui #prog{opacity:0;pointer-events:none}
+  .btn{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#c9cdd6}
+  .btn:hover{background:#2a2d35;color:#fff}
+  .btn.act{color:var(--acc)}
+  .btn svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;
+    stroke-linecap:round;stroke-linejoin:round}
+  .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
+  .fld{display:flex;align-items:center;gap:7px;padding:0 8px;font-size:12px;color:var(--dim)}
+  input[type=range]{-webkit-appearance:none;appearance:none;width:82px;height:3px;border-radius:2px;
+    background:#3a3e47;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;
+    border-radius:50%;background:var(--acc);cursor:pointer}
+  select{font:inherit;font-size:12px;color:var(--fg);background:#2a2d35;border:1px solid var(--line);
+    border-radius:8px;padding:4px 6px;cursor:pointer}
+  #count{font-variant-numeric:tabular-nums;font-size:12px;color:var(--dim);padding:0 8px;white-space:nowrap}
+
+  /* ---------- ピッカー ---------- */
+  #picker{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:24px;
+    background:radial-gradient(120% 90% at 50% 0%,#15171c 0%,var(--bg) 60%)}
+  #picker.hidden{display:none}
+  .card{width:min(560px,100%);text-align:center;border:1px dashed #333741;border-radius:20px;
+    padding:44px 32px;transition:border-color .2s,background .2s}
+  .card.drag{border-color:var(--acc);background:rgba(106,168,255,.06)}
+  .card h1{font-size:19px;font-weight:600;margin:0 0 6px}
+  .card p{margin:0 0 22px;color:var(--dim);font-size:13px}
+  .cta{display:inline-flex;align-items:center;gap:8px;background:var(--acc);color:#08121f;
+    font-weight:600;padding:10px 20px;border-radius:11px}
+  .cta:hover{filter:brightness(1.08)}
+  .sub{margin-top:16px;font-size:12px;color:#666b76}
+  kbd{font:11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;background:#22252c;border:1px solid #33373f;
+    border-bottom-width:2px;border-radius:5px;padding:3px 5px;color:#aeb3bd}
+  #err{margin-top:14px;color:#ff8f8f;font-size:12px;min-height:1em}
+  #busy{position:fixed;inset:0;z-index:25;display:none;place-items:center;background:rgba(10,11,13,.85);
+    color:var(--dim);font-size:13px}
+  #busy.on{display:grid}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <div class="layer" id="l0"></div>
+  <div class="layer" id="l1"></div>
+</div>
+
+<div id="prog"></div>
+<div id="info"><b id="fname"></b> <span id="fdir"></span></div>
+
+<div id="ui">
+  <button class="btn" id="bPrev" title="前へ (←)"><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></button>
+  <button class="btn" id="bPlay" title="再生/一時停止 (Space)"><svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg></button>
+  <button class="btn" id="bNext" title="次へ (→)"><svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></button>
+  <span class="sep"></span>
+  <span class="fld"><span id="ivalLabel">5s</span><input type="range" id="ival" min="1" max="30" step="1" value="5" title="表示秒数"></span>
+  <span class="sep"></span>
+  <button class="btn" id="bShuffle" title="シャッフル (S)"><svg viewBox="0 0 24 24"><path d="M16 4h4v4M4 20 20 4M4 4l5 5M15 15l5 5M16 20h4v-4"/></svg></button>
+  <select id="sort" title="並び順">
+    <option value="name">名前順</option>
+    <option value="date">更新日順</option>
+    <option value="dateDesc">更新日（新しい順）</option>
+  </select>
+  <button class="btn" id="bFit" title="全画面に合わせる/はみ出し (C)"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg></button>
+  <button class="btn" id="bFull" title="フルスクリーン (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5"/></svg></button>
+  <span class="sep"></span>
+  <span id="count">0 / 0</span>
+  <button class="btn" id="bOpen" title="別のフォルダを開く"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+</div>
+
+<div id="picker">
+  <div class="card" id="card">
+    <h1>ローカルフォルダ スライドショー</h1>
+    <p>フォルダを選ぶか、ここにドラッグ＆ドロップしてください<br>（サブフォルダも含めて読み込みます）</p>
+    <button class="cta" id="bPick">
+      <svg viewBox="0 0 24 24" style="width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+      フォルダを選択
+    </button>
+    <div class="sub"><kbd>Space</kbd> 再生 ・ <kbd>←</kbd><kbd>→</kbd> 移動 ・ <kbd>F</kbd> 全画面 ・ <kbd>S</kbd> シャッフル ・ <kbd>H</kbd> UI非表示</div>
+    <div id="err"></div>
+  </div>
+</div>
+
+<div id="busy">読み込み中…</div>
+
+<input type="file" id="fileInput" webkitdirectory directory multiple hidden>
+
+<script>
+(() => {
+  const IMG = /\.(jpe?g|png|gif|webp|avif|bmp|svg|ico|heic|heif)$/i;
+  const VID = /\.(mp4|webm|m4v|mov|ogv)$/i;
+  const $ = id => document.getElementById(id);
+
+  const stage=$('stage'), layers=[$('l0'),$('l1')], picker=$('picker'), card=$('card'),
+        busy=$('busy'), err=$('err'), input=$('fileInput'), prog=$('prog');
+
+  let items=[], order=[], pos=0, front=0, playing=true, shuffle=false,
+      interval=5000, sortMode='name', timer=null, tStart=0, tLeft=0, curUrl=null, rafId=0;
+
+  /* ---------- 設定の保存 ---------- */
+  const S = {
+    load(){ try{ return JSON.parse(localStorage.getItem('slideshow')||'{}'); }catch{ return {}; } },
+    save(){ try{ localStorage.setItem('slideshow', JSON.stringify(
+      {interval, shuffle, sortMode, cover:document.body.classList.contains('cover')})); }catch{} }
+  };
+
+  /* ---------- ファイル収集 ---------- */
+  const isMedia = n => IMG.test(n) || VID.test(n);
+
+  function addFiles(list){
+    const out=[];
+    for(const f of list){
+      const rel = f.webkitRelativePath || f.__rel || f.name;
+      if(!isMedia(rel) || /(^|\/)\._/.test(rel)) continue;
+      out.push({file:f, rel, name:rel.split('/').pop(), dir:rel.split('/').slice(0,-1).join('/'),
+                time:f.lastModified||0, video:VID.test(rel)});
+    }
+    return out;
+  }
+
+  async function walkEntry(entry, path, out){
+    if(entry.isFile){
+      const f = await new Promise((res,rej)=>entry.file(res,rej)).catch(()=>null);
+      if(f){ f.__rel = path + entry.name; out.push(f); }
+    } else if(entry.isDirectory){
+      const reader = entry.createReader();
+      for(;;){
+        const batch = await new Promise((res)=>reader.readEntries(res,()=>res([])));
+        if(!batch.length) break;
+        for(const e of batch) await walkEntry(e, path + entry.name + '/', out);
+      }
+    }
+  }
+
+  async function fromDrop(dt){
+    const entries = [...dt.items].map(i => i.webkitGetAsEntry ? i.webkitGetAsEntry() : null).filter(Boolean);
+    if(!entries.length) return [...dt.files];
+    const out=[];
+    for(const e of entries) await walkEntry(e, '', out);
+    return out;
+  }
+
+  async function fromHandle(dir, path, out){
+    for await (const h of dir.values()){
+      if(h.kind === 'directory') await fromHandle(h, path + h.name + '/', out);
+      else { const f = await h.getFile(); f.__rel = path + h.name; out.push(f); }
+    }
+  }
+
+  /* ---------- 読み込み ---------- */
+  async function load(rawFiles){
+    busy.classList.add('on');
+    await new Promise(r=>setTimeout(r,10));
+    items = addFiles(rawFiles);
+    busy.classList.remove('on');
+    if(!items.length){
+      err.textContent = '画像・動画が見つかりませんでした（jpg / png / gif / webp / heic / mp4 / mov など）';
+      return;
+    }
+    err.textContent = '';
+    picker.classList.add('hidden');
+    buildOrder(true);
+    show(0, true);
+    kick();
+  }
+
+  function buildOrder(reset){
+    const idx = items.map((_,i)=>i);
+    if(shuffle){
+      for(let i=idx.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [idx[i],idx[j]]=[idx[j],idx[i]]; }
+    } else {
+      const coll = new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+      idx.sort((a,b)=>{
+        if(sortMode==='name') return coll.compare(items[a].rel, items[b].rel);
+        if(sortMode==='date') return items[a].time - items[b].time;
+        return items[b].time - items[a].time;
+      });
+    }
+    const cur = order.length ? order[pos] : -1;
+    order = idx;
+    pos = reset ? 0 : Math.max(0, order.indexOf(cur));
+  }
+
+  /* ---------- 表示 ---------- */
+  function show(i, instant){
+    if(!order.length) return;
+    pos = ((i % order.length) + order.length) % order.length;
+    const it = items[order[pos]];
+    const url = URL.createObjectURL(it.file);
+    const back = layers[1-front];
+    back.innerHTML = '';
+
+    let el;
+    if(it.video){
+      el = document.createElement('video');
+      el.src = url; el.autoplay = true; el.muted = true; el.playsInline = true; el.controls = false;
+      el.onended = () => { if(playing) next(); };
+      el.onerror = () => next();
+    } else {
+      el = document.createElement('img');
+      el.src = url; el.alt = it.name; el.decoding = 'async';
+      el.onerror = () => next();
+    }
+    back.appendChild(el);
+
+    if(instant) back.style.transition = 'none';
+    requestAnimationFrame(()=>{
+      layers[front].classList.remove('on');
+      back.classList.add('on');
+      if(instant) requestAnimationFrame(()=>back.style.transition='');
+      front = 1-front;
+      const old = curUrl; curUrl = url;
+      if(old) setTimeout(()=>URL.revokeObjectURL(old), 600);
+    });
+
+    $('fname').textContent = it.name;
+    $('fdir').textContent = it.dir ? '— ' + it.dir : '';
+    $('count').textContent = (pos+1) + ' / ' + order.length;
+
+    // 次の画像を先読み
+    const nx = items[order[(pos+1)%order.length]];
+    if(nx && !nx.video){
+      const u = URL.createObjectURL(nx.file);
+      const im = new Image(); im.src = u;
+      im.onload = im.onerror = () => setTimeout(()=>URL.revokeObjectURL(u), 30000);
+    }
+    restart();
+  }
+
+  const next = () => show(pos+1);
+  const prev = () => show(pos-1);
+
+  /* ---------- タイマー ---------- */
+  function restart(){
+    clearTimeout(timer);
+    const it = items[order[pos]];
+    if(playing && !(it && it.video)){
+      tStart = performance.now(); tLeft = interval;
+      timer = setTimeout(next, interval);
+    } else {
+      tLeft = interval; prog.style.width = '0%';
+    }
+  }
+  function tick(){
+    if(playing && timer){
+      const p = Math.min(1, (performance.now()-tStart)/interval);
+      prog.style.width = (p*100).toFixed(2) + '%';
+    }
+    rafId = requestAnimationFrame(tick);
+  }
+  rafId = requestAnimationFrame(tick);
+
+  function setPlaying(v){
+    playing = v;
+    $('bPlay').innerHTML = v
+      ? '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>'
+      : '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg>';
+    const vid = layers[front].querySelector('video');
+    if(vid){ v ? vid.play().catch(()=>{}) : vid.pause(); }
+    if(v) restart(); else { clearTimeout(timer); timer=null; }
+  }
+
+  /* ---------- UI ---------- */
+  $('bPick').onclick = async () => {
+    err.textContent = '';
+    if(window.showDirectoryPicker){
+      try{
+        const dir = await window.showDirectoryPicker();
+        busy.classList.add('on');
+        const out=[]; await fromHandle(dir, '', out);
+        busy.classList.remove('on');
+        return load(out);
+      }catch(e){
+        if(e && e.name === 'AbortError') return;
+        // 非対応・file:// などは input にフォールバック
+      }
+    }
+    input.click();
+  };
+  $('bOpen').onclick = () => { setPlaying(false); picker.classList.remove('hidden'); };
+  input.onchange = () => { if(input.files.length) load([...input.files]); input.value=''; };
+
+  $('bNext').onclick = next;
+  $('bPrev').onclick = prev;
+  $('bPlay').onclick = () => setPlaying(!playing);
+  $('bShuffle').onclick = () => {
+    shuffle = !shuffle;
+    $('bShuffle').classList.toggle('act', shuffle);
+    buildOrder(shuffle); S.save();
+    if(shuffle) show(0); else $('count').textContent = (pos+1)+' / '+order.length;
+  };
+  $('sort').onchange = e => { sortMode = e.target.value; if(!shuffle){ buildOrder(false); } S.save(); };
+  $('ival').oninput = e => {
+    interval = +e.target.value * 1000;
+    $('ivalLabel').textContent = e.target.value + 's';
+    S.save(); restart();
+  };
+  $('bFit').onclick = () => {
+    document.body.classList.toggle('cover');
+    $('bFit').classList.toggle('act', document.body.classList.contains('cover'));
+    S.save();
+  };
+  $('bFull').onclick = () => {
+    if(document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(()=>{});
+  };
+  stage.onclick = () => { if(!picker.classList.contains('hidden')) return; setPlaying(!playing); };
+
+  document.addEventListener('keydown', e => {
+    if(!picker.classList.contains('hidden')) return;
+    const k = e.key.toLowerCase();
+    if(k === ' '){ e.preventDefault(); setPlaying(!playing); }
+    else if(e.key === 'ArrowRight' || k === 'j'){ next(); }
+    else if(e.key === 'ArrowLeft' || k === 'k'){ prev(); }
+    else if(k === 'f'){ $('bFull').click(); }
+    else if(k === 's'){ $('bShuffle').click(); }
+    else if(k === 'c'){ $('bFit').click(); }
+    else if(k === 'h'){ document.body.classList.toggle('hideui'); }
+    else if(k === 'home'){ show(0); }
+  });
+
+  /* ---------- ドラッグ&ドロップ ---------- */
+  ['dragenter','dragover'].forEach(ev => document.addEventListener(ev, e => {
+    e.preventDefault(); card.classList.add('drag');
+  }));
+  ['dragleave','dragend'].forEach(ev => document.addEventListener(ev, e => {
+    if(e.relatedTarget) return; card.classList.remove('drag');
+  }));
+  document.addEventListener('drop', async e => {
+    e.preventDefault(); card.classList.remove('drag');
+    busy.classList.add('on');
+    const files = await fromDrop(e.dataTransfer);
+    busy.classList.remove('on');
+    if(files.length) load(files); else err.textContent = 'フォルダを読み込めませんでした';
+  });
+
+  /* ---------- 操作がないときはUIを隠す ---------- */
+  let idleT;
+  const wake = () => {
+    document.body.classList.remove('idle');
+    clearTimeout(idleT);
+    idleT = setTimeout(()=>document.body.classList.add('idle'), 2500);
+  };
+  ['mousemove','mousedown','keydown','wheel','touchstart'].forEach(ev =>
+    document.addEventListener(ev, wake, {passive:true}));
+  const kick = wake;
+
+  /* ---------- 起動時に設定を復元 ---------- */
+  const s = S.load();
+  if(s.interval){ interval = s.interval; $('ival').value = interval/1000; $('ivalLabel').textContent = interval/1000 + 's'; }
+  if(s.sortMode){ sortMode = s.sortMode; $('sort').value = sortMode; }
+  if(s.shuffle){ shuffle = true; $('bShuffle').classList.add('act'); }
+  if(s.cover){ document.body.classList.add('cover'); $('bFit').classList.add('act'); }
+  setPlaying(true);
+})();
+</script>
+</body>
+</html>
