@@ -69,6 +69,32 @@
     border-radius:8px;padding:4px 6px;cursor:pointer}
   #count{font-variant-numeric:tabular-nums;font-size:12px;color:var(--dim);padding:0 8px;white-space:nowrap}
 
+  /* ---------- 続きから ---------- */
+  #resume{position:fixed;top:0;left:0;right:0;z-index:7;display:none;
+    justify-content:center;align-items:center;gap:12px;padding:12px 16px;
+    background:linear-gradient(rgba(20,22,27,.92),rgba(20,22,27,0));
+    font-size:12px;color:#cfd3db;transition:opacity .3s}
+  #resume.on{display:flex}
+  body.idle #resume,body.hideui #resume{opacity:0;pointer-events:none}
+  #resume button{color:var(--acc);font-size:12px;padding:4px 10px;border-radius:8px;
+    border:1px solid #333741;background:#191b21;white-space:nowrap}
+  #resume button:hover{background:#22252c}
+
+  /* ---------- 中断の記録 ---------- */
+  .logbox{margin-top:20px;border-top:1px solid var(--line);padding-top:16px;text-align:left}
+  .logbox summary{cursor:pointer;font-size:12px;color:var(--dim);text-align:center;list-style:none}
+  .logbox summary::-webkit-details-marker{display:none}
+  .logbox summary:hover{color:var(--fg)}
+  .logbox .scroll{max-height:220px;overflow:auto;margin-top:12px}
+  .logbox table{width:100%;border-collapse:collapse;font-size:11px;color:#aeb3bd}
+  .logbox th,.logbox td{text-align:left;padding:4px 6px;border-bottom:1px solid #1e2026;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:170px}
+  .logbox th{color:#666b76;font-weight:500;position:sticky;top:0;background:#0e1013}
+  .logbox .acts{display:flex;gap:8px;justify-content:center;margin-top:12px}
+  .logbox .acts button{font-size:11px;color:#aeb3bd;border:1px solid #333741;border-radius:8px;padding:5px 10px}
+  .logbox .acts button:hover{background:#22252c;color:#fff}
+  #last{margin-top:16px;font-size:12px;color:var(--dim);line-height:1.7}
+
   /* ---------- ピッカー ---------- */
   #picker{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:24px;
     background:radial-gradient(120% 90% at 50% 0%,#15171c 0%,var(--bg) 60%)}
@@ -99,6 +125,7 @@
 
 <div id="prog"></div>
 <div id="info"><b id="fname"></b> <span id="fdir"></span></div>
+<div id="resume"></div>
 
 <div id="ui">
   <button class="btn" id="bPrev" title="前へ (←)"><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></button>
@@ -137,6 +164,15 @@
       <kbd>P</kbd> 縦長を左右に並べる ・ <kbd>S</kbd> シャッフル ・ <kbd>C</kbd> 表示切替 ・ <kbd>H</kbd> UI非表示
     </div>
     <div id="err"></div>
+    <div id="last"></div>
+    <details class="logbox" id="logbox" hidden>
+      <summary id="logSum">中断の記録を見る</summary>
+      <div class="scroll" id="logBody"></div>
+      <div class="acts">
+        <button id="bCsv">CSVで書き出す</button>
+        <button id="bClear">記録を消す</button>
+      </div>
+    </details>
   </div>
 </div>
 
@@ -256,8 +292,82 @@
     return out.length ? out : [p];
   }
 
+  /* ---------- 中断の記録 ---------- */
+  const LOG_KEY = 'slideshow.log';
+  let folderKey='', sessStart=0, seen=0;
+
+  // プライベートウィンドウや file:// の制限で保存できないことがあるので、最初に確かめる
+  const canStore = (() => {
+    try{ localStorage.setItem('__probe','1'); localStorage.removeItem('__probe'); return true; }
+    catch{ return false; }
+  })();
+  const logAll  = () => { try{ return JSON.parse(localStorage.getItem(LOG_KEY)||'[]'); }catch{ return []; } };
+  const logSave = a => { try{ localStorage.setItem(LOG_KEY, JSON.stringify(a.slice(-300))); }catch{} };
+  const esc = t => String(t).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  function stamp(t){
+    const d = new Date(t), z = v => String(v).padStart(2,'0');
+    return d.getFullYear()+'/'+z(d.getMonth()+1)+'/'+z(d.getDate())+' '+z(d.getHours())+':'+z(d.getMinutes());
+  }
+
+  // いま映っているものを「見るのをやめた地点」として書き留める
+  function recordStop(why){
+    if(!order.length || !folderKey || !items[order[pos]]) return;
+    const names = [];
+    for(let k = pos; k < pos + span && k < order.length; k++) names.push(items[order[k]].name);
+    const rec = {t:Date.now(), folder:folderKey, name:names.join(' ／ '), idx:pos+1, total:order.length,
+                 seen, ms: sessStart ? Date.now()-sessStart : 0, playing, why};
+    const a = logAll(), prev = a[a.length-1];
+    // 同じ写真のまま出たり入ったりしただけなら、増やさずに書き換える
+    if(prev && prev.folder === rec.folder && prev.idx === rec.idx && rec.t - prev.t < 600000)
+      a[a.length-1] = rec;
+    else a.push(rec);
+    logSave(a);
+  }
+
+  function lastFor(key){
+    const a = logAll();
+    for(let i = a.length-1; i >= 0; i--) if(a[i].folder === key) return a[i];
+    return null;
+  }
+
+  function offerResume(rec){
+    const bar = $('resume');
+    bar.textContent = '前回はここで終わっていました — ' + rec.name +
+                      '（' + rec.idx + '/' + rec.total + '・' + stamp(rec.t) + '）';
+    const b = document.createElement('button');
+    b.textContent = '最初から';
+    b.onclick = e => { e.stopPropagation(); bar.classList.remove('on'); show(0, true); };
+    bar.appendChild(b);
+    bar.classList.add('on');
+    setTimeout(()=>bar.classList.remove('on'), 12000);
+  }
+
+  function renderLog(){
+    const a = logAll(), box = $('logbox'), last = a[a.length-1];
+    box.hidden = !a.length;
+    if(!canStore){
+      $('last').textContent = '⚠ このブラウザ（またはこの開き方）では記録を保存できません。'
+        + 'プライベートウィンドウを閉じるか、https://haristweet.github.io/slideshow/ を開いてください。';
+      return;
+    }
+    $('last').textContent = last
+      ? '前回の中断: ' + last.name + '（' + last.folder + ' の ' + last.idx + '/' + last.total + '枚目・' + stamp(last.t) + '）'
+      : '';
+    if(!a.length) return;
+    $('logSum').textContent = '中断の記録を見る（' + a.length + '件）';
+    $('logBody').innerHTML = '<table><tr><th>日時</th><th>フォルダ</th><th>写真</th><th>位置</th><th>見た枚数</th><th>時間</th></tr>'
+      + a.slice(-40).reverse().map(r =>
+          '<tr><td>' + stamp(r.t) + '</td><td>' + esc(r.folder) + '</td><td>' + esc(r.name) +
+          '</td><td>' + r.idx + ' / ' + r.total + '</td><td>' + r.seen + '枚</td><td>' +
+          Math.round(r.ms/1000) + '秒</td></tr>').join('') + '</table>';
+  }
+
+  addEventListener('pagehide', () => recordStop('閉じた'));
+  document.addEventListener('visibilitychange', () => { if(document.hidden) recordStop('画面を離れた'); });
+
   /* ---------- 読み込み ---------- */
   async function load(rawFiles){
+    recordStop('フォルダを変えた');
     busy.classList.add('on');
     await new Promise(r=>setTimeout(r,10));
     items = addFiles(rawFiles);
@@ -269,7 +379,14 @@
     err.textContent = '';
     picker.classList.add('hidden');
     buildOrder(true);
-    show(0, true);
+
+    // フォルダ名で前回の続きを探す
+    const rel0 = items[0].rel;
+    folderKey = rel0.includes('/') ? rel0.split('/')[0] : '(フォルダ直下)';
+    sessStart = Date.now(); seen = 0;
+    const rec = lastFor(folderKey);
+    if(rec && rec.idx > 1 && rec.idx <= items.length){ show(rec.idx - 1, true); offerResume(rec); }
+    else show(0, true);
     wake();
   }
 
@@ -321,7 +438,9 @@
     }
 
     const g = groupAt(p);
+    const was = pos;
     pos = g[0]; span = g.length;
+    if(was !== pos) seen++;
 
     const back = layers[1-front];
     back.innerHTML = '';
@@ -404,7 +523,7 @@
       try{
         const dir = await window.showDirectoryPicker();
         busy.classList.add('on');
-        const out=[]; await fromHandle(dir, '', out);
+        const out=[]; await fromHandle(dir, dir.name + '/', out);
         busy.classList.remove('on');
         return load(out);
       }catch(e){
@@ -414,7 +533,21 @@
     }
     input.click();
   };
-  $('bOpen').onclick = () => { setPlaying(false); picker.classList.remove('hidden'); };
+  $('bOpen').onclick = () => { setPlaying(false); renderLog(); picker.classList.remove('hidden'); };
+
+  $('bCsv').onclick = () => {
+    const q = v => '"' + String(v).replace(/"/g,'""') + '"';
+    const csv = '\ufeff' + ['日時','フォルダ','ファイル名','位置','総数','見た枚数','視聴秒数','状態','きっかけ'].join(',')
+      + '\n' + logAll().map(r => [stamp(r.t), r.folder, r.name, r.idx, r.total, r.seen,
+          Math.round(r.ms/1000), r.playing ? '再生中' : '停止中', r.why].map(q).join(',')).join('\n');
+    const u = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
+    const a = document.createElement('a');
+    a.href = u; a.download = 'slideshow-log.csv'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(u), 5000);
+  };
+  $('bClear').onclick = () => {
+    if(confirm('中断の記録を全部消しますか？')){ localStorage.removeItem(LOG_KEY); renderLog(); }
+  };
   input.onchange = () => { if(input.files.length) load([...input.files]); input.value=''; };
 
   $('bNext').onclick = next;
@@ -505,6 +638,7 @@
   if(s.pair){ pair = true; $('bPair').classList.add('act'); }
   if(s.cover){ document.body.classList.add('cover'); $('bFit').classList.add('act'); }
   setPlaying(true);
+  renderLog();
 })();
 </script>
 </body>
