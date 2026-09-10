@@ -21,14 +21,10 @@
 
   .pack{display:flex;width:100%;height:100%;align-items:center;justify-content:center}
   .pack.multi{gap:8px;padding:8px}
-  .slot{height:100%;display:flex;align-items:center;justify-content:center;min-width:0;overflow:hidden}
-  .pack.solo .slot{flex:0 1 auto;max-width:100%}
-  .pack.multi .slot{flex:1 1 0}
-  .slot img,.slot video{max-width:100%;max-height:100%;object-fit:contain;display:block}
-  .pack.multi .slot img,.pack.multi .slot video{width:100%;height:100%}
-  body.cover .pack.solo .slot img,body.cover .pack.solo .slot video{
-    width:100%;height:100%;object-fit:cover;max-width:none;max-height:none}
-  body.cover .pack.multi .slot img,body.cover .pack.multi .slot video{object-fit:cover}
+  .slot{flex:1 1 0;min-width:0;height:100%;display:flex;align-items:center;justify-content:center;
+    overflow:hidden}
+  .slot img,.slot video{width:100%;height:100%;object-fit:contain;display:block}
+  body.cover .slot img,body.cover .slot video{object-fit:cover}
 
   /* ---------- 進捗バー ---------- */
   #prog{position:fixed;top:0;left:0;height:2px;width:0;background:var(--acc);
@@ -491,13 +487,21 @@
     if(!el.__z || !el.__z.w){          // まだ読み込めていないうちは測り直す
       const r = el.getBoundingClientRect();
       if(!r.width || !r.height) return null;
-      el.__z = {s:1, tx:0, ty:0, w:r.width, h:r.height, cx:r.left + r.width/2, cy:r.top + r.height/2};
+      // 箱いっぱいに映っているとは限らない（object-fit で内側に収まっている）ので、
+      // 実際に映っている大きさを出しておく。動かせる範囲はこちらで決める。
+      const nw = el.naturalWidth || el.videoWidth || 0, nh = el.naturalHeight || el.videoHeight || 0;
+      const ma = (nw && nh) ? nw / nh : r.width / r.height;
+      const cover = document.body.classList.contains('cover');
+      const cw = cover ? Math.max(r.width, r.height * ma) : Math.min(r.width, r.height * ma);
+      el.__z = {s:1, tx:0, ty:0, w:r.width, h:r.height, cw, ch: cw / ma,
+                cx:r.left + r.width/2, cy:r.top + r.height/2};
     }
     return el.__z;
   }
   function draw(el){
     const z = el.__z;
-    const mx = (z.s - 1) * z.w / 2, my = (z.s - 1) * z.h / 2;   // 枠の内側が空かないように止める
+    const mx = Math.max(0, (z.s * z.cw - z.w) / 2);   // 映像の外側が見えない範囲まで
+    const my = Math.max(0, (z.s * z.ch - z.h) / 2);
     z.tx = Math.max(-mx, Math.min(mx, z.tx));
     z.ty = Math.max(-my, Math.min(my, z.ty));
     el.style.transform = z.s > 1 ? 'translate(' + z.tx + 'px,' + z.ty + 'px) scale(' + z.s + ')' : '';
@@ -512,7 +516,8 @@
   }
   function resetZoom(){
     if(curPack) curPack.querySelectorAll('img,video').forEach(el => {
-      if(el.__z){ el.__z.s = 1; el.__z.tx = 0; el.__z.ty = 0; draw(el); }
+      el.style.transform = '';
+      delete el.__z;                  // 表示の仕方や窓の大きさが変わっていたら測り直す
     });
     setZoomed(false);
   }
@@ -749,7 +754,7 @@
   $('bFit').onclick = () => {
     document.body.classList.toggle('cover');
     $('bFit').classList.toggle('act', document.body.classList.contains('cover'));
-    S.save();
+    resetZoom(); S.save();
   };
   $('bFull').onclick = () => {
     if(document.fullscreenElement) document.exitFullscreen();
@@ -783,6 +788,7 @@
   addEventListener('resize', () => {
     clearTimeout(rz);
     rz = setTimeout(() => {
+      resetZoom();
       if(!order.length || !pair) return;
       if(groupAt(pos).length !== span) show(pos, true);
     }, 200);
