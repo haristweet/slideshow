@@ -16,7 +16,7 @@
 
   /* ---------- ステージ ---------- */
   #stage{position:fixed;inset:0;background:#000}
-  .layer{position:absolute;inset:0;opacity:0;transition:opacity .45s ease}
+  .layer{position:absolute;inset:0;opacity:0;transition:opacity .45s ease;pointer-events:none}
   .layer.on{opacity:1}
 
   .pack{display:flex;width:100%;height:100%;align-items:center;justify-content:center}
@@ -473,14 +473,24 @@
   /* ---------- ホイールで拡大 ---------- */
   const MAXZ = 8;
 
-  // カーソルの下にある画像／動画（並べているときは、その1枚だけ）
-  function under(x, y){
-    const el = document.elementFromPoint(x, y);
-    return el && curPack && curPack.contains(el) && (el.tagName === 'IMG' || el.tagName === 'VIDEO') ? el : null;
+  // カーソルの位置にいちばん近い枠の中身を返す。
+  // 当たり判定（elementFromPoint）だと、重なっている前のスライドの層に取られて
+  // 1枚おきに効かなくなるので、座標で選ぶ。余白（黒帯）の上で回しても効く。
+  function under(x){
+    if(!curPack) return null;
+    let best = null, bd = Infinity;
+    for(const slot of curPack.children){
+      const r = slot.getBoundingClientRect();
+      if(!r.width) continue;
+      const d = x < r.left ? r.left - x : (x > r.right ? x - r.right : 0);
+      if(d < bd){ bd = d; best = slot; }
+    }
+    return best ? best.querySelector('img,video') : null;
   }
   function zstate(el){
-    if(!el.__z){
+    if(!el.__z || !el.__z.w){          // まだ読み込めていないうちは測り直す
       const r = el.getBoundingClientRect();
+      if(!r.width || !r.height) return null;
       el.__z = {s:1, tx:0, ty:0, w:r.width, h:r.height, cx:r.left + r.width/2, cy:r.top + r.height/2};
     }
     return el.__z;
@@ -508,10 +518,11 @@
   }
 
   stage.addEventListener('wheel', e => {
-    const el = under(e.clientX, e.clientY);
+    const el = under(e.clientX);
     if(!el) return;
     e.preventDefault();
     const z = zstate(el);
+    if(!z) return;
     const s2 = Math.max(1, Math.min(MAXZ, z.s * Math.exp(-e.deltaY * 0.0018)));
     const k = s2 / z.s;
     // カーソルの下の点が動かないように寄せる
@@ -525,7 +536,7 @@
   }, {passive:false});
 
   stage.addEventListener('mousedown', e => {
-    const el = under(e.clientX, e.clientY);
+    const el = under(e.clientX);
     if(!el || !el.__z || el.__z.s <= 1) return;
     pan = {el, x:e.clientX, y:e.clientY, moved:0};
     e.preventDefault();
