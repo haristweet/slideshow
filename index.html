@@ -21,7 +21,7 @@
 
   .pack{display:flex;width:100%;height:100%;align-items:center;justify-content:center}
   .pack.multi{gap:8px;padding:8px}
-  .slot{height:100%;display:flex;align-items:center;justify-content:center;min-width:0}
+  .slot{height:100%;display:flex;align-items:center;justify-content:center;min-width:0;overflow:hidden}
   .pack.solo .slot{flex:0 1 auto;max-width:100%}
   .pack.multi .slot{flex:1 1 0}
   .slot img,.slot video{max-width:100%;max-height:100%;object-fit:contain;display:block}
@@ -68,6 +68,9 @@
   select{font:inherit;font-size:12px;color:var(--fg);background:#2a2d35;border:1px solid var(--line);
     border-radius:8px;padding:4px 6px;cursor:pointer}
   #count{font-variant-numeric:tabular-nums;font-size:12px;color:var(--dim);padding:0 8px;white-space:nowrap}
+
+  body.zoom .slot img,body.zoom .slot video{cursor:grab}
+  body.zoom .slot img:active,body.zoom .slot video:active{cursor:grabbing}
 
   /* ---------- 短い知らせ ---------- */
   #toast{position:fixed;left:50%;bottom:72px;transform:translateX(-50%);z-index:8;
@@ -175,7 +178,8 @@
     <div class="sub">
       <kbd>Space</kbd> 再生 ・ <kbd>←</kbd><kbd>→</kbd> 移動 ・ <kbd>F</kbd> 全画面<br>
       <kbd>P</kbd> 縦長を左右に並べる ・ <kbd>S</kbd> シャッフル ・ <kbd>C</kbd> 表示切替 ・ <kbd>H</kbd> UI非表示<br>
-      <kbd>M</kbd> 消音 ・ <kbd>↑</kbd><kbd>↓</kbd> 音量（動画に音があれば鳴ります）
+      <kbd>M</kbd> 消音 ・ <kbd>↑</kbd><kbd>↓</kbd> 音量（動画に音があれば鳴ります）<br>
+      ホイールで拡大 ・ ドラッグで動かす ・ <kbd>0</kbd> で戻す
     </div>
     <div id="err"></div>
     <div id="last"></div>
@@ -206,7 +210,8 @@
 
   let items=[], order=[], pos=0, span=1, front=0, playing=true, shuffle=false, pair=false,
       interval=5000, sortMode='name', timer=null, tStart=0, curUrls=[], token=0,
-      muted=false, volume=1, needTap=false, curPack=null, dir=1;
+      muted=false, volume=1, needTap=false, curPack=null, dir=1,
+      zoomed=false, pan=null, skipClick=false;
 
   /* ---------- 設定の保存 ---------- */
   const S = {
@@ -465,6 +470,80 @@
     addEventListener('touchstart', on, true);
   }
 
+  /* ---------- ホイールで拡大 ---------- */
+  const MAXZ = 8;
+
+  // カーソルの下にある画像／動画（並べているときは、その1枚だけ）
+  function under(x, y){
+    const el = document.elementFromPoint(x, y);
+    return el && curPack && curPack.contains(el) && (el.tagName === 'IMG' || el.tagName === 'VIDEO') ? el : null;
+  }
+  function zstate(el){
+    if(!el.__z){
+      const r = el.getBoundingClientRect();
+      el.__z = {s:1, tx:0, ty:0, w:r.width, h:r.height, cx:r.left + r.width/2, cy:r.top + r.height/2};
+    }
+    return el.__z;
+  }
+  function draw(el){
+    const z = el.__z;
+    const mx = (z.s - 1) * z.w / 2, my = (z.s - 1) * z.h / 2;   // 枠の内側が空かないように止める
+    z.tx = Math.max(-mx, Math.min(mx, z.tx));
+    z.ty = Math.max(-my, Math.min(my, z.ty));
+    el.style.transform = z.s > 1 ? 'translate(' + z.tx + 'px,' + z.ty + 'px) scale(' + z.s + ')' : '';
+  }
+  // 拡大している間は自動送りを止める（見ている最中に流れていかないように）
+  function setZoomed(v){
+    if(zoomed === v) return;
+    zoomed = v;
+    document.body.classList.toggle('zoom', v);
+    if(v){ clearTimeout(timer); timer = null; prog.style.width = '0%'; }
+    else restart();
+  }
+  function resetZoom(){
+    if(curPack) curPack.querySelectorAll('img,video').forEach(el => {
+      if(el.__z){ el.__z.s = 1; el.__z.tx = 0; el.__z.ty = 0; draw(el); }
+    });
+    setZoomed(false);
+  }
+
+  stage.addEventListener('wheel', e => {
+    const el = under(e.clientX, e.clientY);
+    if(!el) return;
+    e.preventDefault();
+    const z = zstate(el);
+    const s2 = Math.max(1, Math.min(MAXZ, z.s * Math.exp(-e.deltaY * 0.0018)));
+    const k = s2 / z.s;
+    // カーソルの下の点が動かないように寄せる
+    z.tx = e.clientX - z.cx - k * (e.clientX - z.cx - z.tx);
+    z.ty = e.clientY - z.cy - k * (e.clientY - z.cy - z.ty);
+    z.s = s2;
+    if(s2 === 1){ z.tx = 0; z.ty = 0; }
+    draw(el);
+    setZoomed(s2 > 1);
+    toast('拡大 ' + Math.round(s2 * 100) + '%', 900);
+  }, {passive:false});
+
+  stage.addEventListener('mousedown', e => {
+    const el = under(e.clientX, e.clientY);
+    if(!el || !el.__z || el.__z.s <= 1) return;
+    pan = {el, x:e.clientX, y:e.clientY, moved:0};
+    e.preventDefault();
+  });
+  addEventListener('mousemove', e => {
+    if(!pan) return;
+    const z = pan.el.__z;
+    z.tx += e.clientX - pan.x; z.ty += e.clientY - pan.y;
+    pan.moved += Math.abs(e.clientX - pan.x) + Math.abs(e.clientY - pan.y);
+    pan.x = e.clientX; pan.y = e.clientY;
+    draw(pan.el);
+  });
+  addEventListener('mouseup', () => {
+    if(pan && pan.moved > 4) skipClick = true;   // 動かしただけのときは一時停止させない
+    pan = null;
+  });
+  stage.addEventListener('dblclick', resetZoom);
+
   /* ---------- 表示 ---------- */
   function makeEl(it, url, onEnd, onFail){
     let el;
@@ -514,6 +593,7 @@
     const packEl = document.createElement('div');
     packEl.className = 'pack ' + (g.length > 1 ? 'multi' : 'solo');
     curPack = packEl;
+    zoomed = false; document.body.classList.remove('zoom');   // 送ったら等倍に戻る
     const urls = [];
     const advance = () => { if(playing && token === my) next(); };
     // 開けなかったものは、進んでいた向きに飛ばす（戻っている最中に前へ弾かれないように）
@@ -664,7 +744,10 @@
     if(document.fullscreenElement) document.exitFullscreen();
     else document.documentElement.requestFullscreen().catch(()=>{});
   };
-  stage.onclick = () => { if(picker.classList.contains('hidden')) setPlaying(!playing); };
+  stage.onclick = () => {
+    if(skipClick){ skipClick = false; return; }
+    if(picker.classList.contains('hidden')) setPlaying(!playing);
+  };
 
   document.addEventListener('keydown', e => {
     if(!picker.classList.contains('hidden')) return;
@@ -675,6 +758,7 @@
     else if(e.key === 'ArrowUp'){ e.preventDefault(); setVolume(volume + 0.1); }
     else if(e.key === 'ArrowDown'){ e.preventDefault(); setVolume(volume - 0.1); }
     else if(k === 'm'){ $('bSound').click(); }
+    else if(k === '0'){ resetZoom(); }
     else if(k === 'f'){ $('bFull').click(); }
     else if(k === 'p'){ $('bPair').click(); }
     else if(k === 's'){ $('bShuffle').click(); }
