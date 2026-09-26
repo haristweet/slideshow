@@ -438,7 +438,7 @@
   /* ---------- 音 ---------- */
   const SPK = '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16.5 8.8a4 4 0 0 1 0 6.4"/></svg>';
   const MUTE = '<svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM17 10l4 4M21 10l-4 4"/></svg>';
-  const vids = () => document.querySelectorAll('.layer video');
+  const vids = () => curPack ? curPack.querySelectorAll('video') : [];
 
   function applySound(){
     vids().forEach(v => { v.muted = muted || needTap; v.volume = volume; });
@@ -606,6 +606,10 @@
 
     const back = layers[1-front];
     back.innerHTML = '';
+    // 前に映していた動画は、まだ画面から消えていなくても音を止める。
+    // 放っておくと次の動画と重なって鳴る（レイヤは2枚を交互に使うので、
+    // 上の innerHTML='' で消えるのは2つ前のぶん）。
+    stage.querySelectorAll('video').forEach(v => { v.pause(); v.muted = true; });
     const packEl = document.createElement('div');
     packEl.className = 'pack ' + (g.length > 1 ? 'multi' : 'solo');
     curPack = packEl;
@@ -634,6 +638,10 @@
       front = 1-front;
       const old = curUrls; curUrls = urls;
       if(old.length) setTimeout(()=>old.forEach(u=>URL.revokeObjectURL(u)), 600);
+      setTimeout(() => {                      // 消え終わってから古いほうを片付ける
+        if(token !== my) return;              // その間に次へ送られていたら触らない
+        for(const L of layers) if(L !== packEl.parentNode) L.innerHTML = '';
+      }, 700);
     });
 
     const names = g.map(k => items[order[k]].name);
