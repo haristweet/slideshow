@@ -35,6 +35,8 @@
   #info{position:fixed;top:14px;left:16px;z-index:6;max-width:60vw;
     font-size:12px;color:#cfd3db;text-shadow:0 1px 6px rgba(0,0,0,.9);transition:opacity .3s}
   #info b{font-weight:500}
+  #track{display:block;margin-top:3px;color:var(--acc);font-size:12px}
+  #track[hidden]{display:none}
   #info span{color:var(--dim)}
 
   /* ---------- コントロールバー ---------- */
@@ -132,7 +134,7 @@
 </div>
 
 <div id="prog"></div>
-<div id="info"><b id="fname"></b> <span id="fdir"></span></div>
+<div id="info"><b id="fname"></b> <span id="fdir"></span><span id="track" hidden></span></div>
 <div id="resume"></div>
 <div id="toast"></div>
 
@@ -143,6 +145,9 @@
   <span class="sep"></span>
   <span class="fld"><span id="ivalLabel">5s</span><input type="range" id="ival" min="1" max="30" step="1" value="5" title="表示秒数"></span>
   <span class="sep"></span>
+  <button class="btn" id="bAsmr" title="ASMRモード — 音声ファイルを中心に流す (A)">
+    <svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>
+  </button>
   <button class="btn" id="bSound" title="音を消す / 出す (M) ・ 音量は ↑↓"></button>
   <span id="vtime"></span>
   <span class="sep"></span>
@@ -175,7 +180,8 @@
       <kbd>Space</kbd> 再生 ・ <kbd>←</kbd><kbd>→</kbd> 移動 ・ <kbd>F</kbd> 全画面<br>
       <kbd>P</kbd> 縦長を左右に並べる ・ <kbd>S</kbd> シャッフル ・ <kbd>C</kbd> 表示切替 ・ <kbd>H</kbd> UI非表示<br>
       <kbd>M</kbd> 消音 ・ <kbd>↑</kbd><kbd>↓</kbd> 音量（動画に音があれば鳴ります）<br>
-      ホイールで拡大 ・ ドラッグで動かす ・ <kbd>0</kbd> で戻す
+      ホイールで拡大 ・ ドラッグで動かす ・ <kbd>0</kbd> で戻す<br>
+      <kbd>A</kbd> ASMRモード（同じフォルダの音声を流しながら絵を送る）
     </div>
     <div id="err"></div>
     <div id="last"></div>
@@ -198,6 +204,7 @@
 (() => {
   const IMG = /\.(jpe?g|png|gif|webp|avif|bmp|svg|ico|heic|heif)$/i;
   const VID = /\.(mp4|webm|m4v|mov|ogv)$/i;
+  const AUD = /\.(mp3|m4a|aac|wav|flac|ogg|oga|opus|weba|aif|aiff)$/i;
   const MAX_COLS = 3;          // 並べる上限
   const $ = id => document.getElementById(id);
 
@@ -207,13 +214,14 @@
   let items=[], order=[], pos=0, span=1, front=0, playing=true, shuffle=false, pair=false,
       interval=5000, sortMode='name', timer=null, tStart=0, curUrls=[], token=0,
       muted=false, volume=1, needTap=false, curPack=null, dir=1,
-      zoomed=false, pan=null, skipClick=false;
+      zoomed=false, pan=null, skipClick=false,
+      asmr=false, tracks=[], tIdx=0, trackUrl=null, failRun=0;
 
   /* ---------- 設定の保存 ---------- */
   const S = {
     load(){ try{ return JSON.parse(localStorage.getItem('slideshow')||'{}'); }catch{ return {}; } },
     save(){ try{ localStorage.setItem('slideshow', JSON.stringify(
-      {interval, shuffle, sortMode, pair, muted, volume,
+      {interval, shuffle, sortMode, pair, muted, volume, asmr,
        cover:document.body.classList.contains('cover')})); }catch{} }
   };
 
@@ -221,14 +229,16 @@
   const isMedia = n => IMG.test(n) || VID.test(n);
 
   function addFiles(list){
-    const out=[];
+    const out=[], aud=[];
     for(const f of list){
       const rel = f.webkitRelativePath || f.__rel || f.name;
-      if(!isMedia(rel) || /(^|\/)\._/.test(rel)) continue;
-      out.push({file:f, rel, name:rel.split('/').pop(), dir:rel.split('/').slice(0,-1).join('/'),
-                time:f.lastModified||0, video:VID.test(rel), ar:undefined});
+      if(/(^|\/)\._/.test(rel)) continue;
+      const base = {file:f, rel, name:rel.split('/').pop(), dir:rel.split('/').slice(0,-1).join('/'),
+                    time:f.lastModified||0};
+      if(AUD.test(rel)) aud.push(base);                       // 音声は絵として出さず、別に持つ
+      else if(isMedia(rel)) out.push({...base, video:VID.test(rel), ar:undefined});
     }
-    return out;
+    return {media:out, tracks:aud};
   }
 
   async function walkEntry(entry, path, out){
@@ -332,7 +342,8 @@
     const names = [];
     for(let k = pos; k < pos + span && k < order.length; k++) names.push(items[order[k]].name);
     const rec = {t:Date.now(), folder:folderKey, name:names.join(' ／ '), idx:pos+1, total:order.length,
-                 seen, ms: sessStart ? Date.now()-sessStart : 0, playing, why};
+                 seen, ms: sessStart ? Date.now()-sessStart : 0, playing, why,
+                 track: (asmr && tracks[tIdx]) ? tracks[tIdx].name : ''};
     const a = logAll(), prev = a[a.length-1];
     // 同じ写真のまま出たり入ったりしただけなら、増やさずに書き換える
     if(prev && prev.folder === rec.folder && prev.idx === rec.idx && rec.t - prev.t < 600000)
@@ -372,11 +383,11 @@
       : '';
     if(!a.length) return;
     $('logSum').textContent = '中断の記録を見る（' + a.length + '件）';
-    $('logBody').innerHTML = '<table><tr><th>日時</th><th>フォルダ</th><th>写真</th><th>位置</th><th>見た枚数</th><th>時間</th></tr>'
+    $('logBody').innerHTML = '<table><tr><th>日時</th><th>フォルダ</th><th>写真</th><th>音声</th><th>位置</th><th>見た枚数</th><th>時間</th></tr>'
       + a.slice(-40).reverse().map(r =>
           '<tr><td>' + stamp(r.t) + '</td><td>' + esc(r.folder) + '</td><td>' + esc(r.name) +
-          '</td><td>' + r.idx + ' / ' + r.total + '</td><td>' + r.seen + '枚</td><td>' +
-          Math.round(r.ms/1000) + '秒</td></tr>').join('') + '</table>';
+          '</td><td>' + esc(r.track || '') + '</td><td>' + r.idx + ' / ' + r.total + '</td><td>' +
+          r.seen + '枚</td><td>' + Math.round(r.ms/1000) + '秒</td></tr>').join('') + '</table>';
   }
 
   addEventListener('pagehide', () => recordStop('閉じた'));
@@ -387,10 +398,13 @@
     recordStop('フォルダを変えた');
     busy.classList.add('on');
     await new Promise(r=>setTimeout(r,10));
-    items = addFiles(rawFiles);
+    const got = addFiles(rawFiles);
+    items = got.media; tracks = got.tracks; tIdx = 0; failRun = 0;
     busy.classList.remove('on');
     if(!items.length){
-      err.textContent = '画像・動画が見つかりませんでした（jpg / png / gif / webp / heic / mp4 / mov など）';
+      err.textContent = tracks.length
+        ? '音声は' + tracks.length + '件ありましたが、映す画像がありませんでした'
+        : '画像・動画が見つかりませんでした（jpg / png / gif / webp / heic / mp4 / mov など）';
       return;
     }
     err.textContent = '';
@@ -401,6 +415,15 @@
     const rel0 = items[0].rel;
     folderKey = rel0.includes('/') ? rel0.split('/')[0] : '(フォルダ直下)';
     sessStart = Date.now(); seen = 0;
+    sortTracks();
+    $('track').hidden = !(asmr && tracks.length);
+    if(asmr && tracks.length) startTrack(0);
+    else {
+      audio.pause();                 // 前のフォルダの音を持ち越さない
+      if(tracks.length) toast('音声が' + tracks.length + '件あります。A でASMRモード', 5000);
+      else if(asmr) toast('このフォルダには音声がありません', 3000);
+    }
+
     const rec = lastFor(folderKey);
     if(rec && rec.idx > 1 && rec.idx <= items.length){ show(rec.idx - 1, true); offerResume(rec); }
     else show(0, true);
@@ -419,6 +442,7 @@
         return items[b].time - items[a].time;
       });
     }
+    sortTracks();
     const cur = order.length ? order[pos] : -1;
     order = idx;
     pos = reset ? 0 : Math.max(0, order.indexOf(cur));
@@ -441,7 +465,8 @@
   const vids = () => curPack ? curPack.querySelectorAll('video') : [];
 
   function applySound(){
-    vids().forEach(v => { v.muted = muted || needTap; v.volume = volume; });
+    vids().forEach(v => { v.muted = asmr ? true : (muted || needTap); v.volume = volume; });
+    audio.muted = muted; audio.volume = volume;
     $('bSound').innerHTML = (muted || needTap) ? MUTE : SPK;
     $('bSound').classList.toggle('act', !(muted || needTap));
   }
@@ -464,6 +489,75 @@
     addEventListener('mousedown', on, true);
     addEventListener('keydown', on, true);
     addEventListener('touchstart', on, true);
+  }
+
+  /* ---------- ASMRモード ---------- */
+  // 絵とは別に、音声を1本ずつ流し続ける。絵は表示秒数で送り、音が1本終わった
+  // 時点でも切り替える。全部鳴らし終わったら最初に戻る。
+  const audio = new Audio();
+  audio.preload = 'auto';
+
+  function sortTracks(){
+    if(!tracks.length) return;
+    if(shuffle){
+      for(let i=tracks.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [tracks[i],tracks[j]]=[tracks[j],tracks[i]]; }
+    } else {
+      const coll = new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+      tracks.sort((a,b)=>{
+        if(sortMode==='name') return coll.compare(a.rel, b.rel);
+        if(sortMode==='date') return a.time - b.time;
+        return b.time - a.time;
+      });
+    }
+  }
+
+  function startTrack(i){
+    if(!tracks.length) return;
+    tIdx = ((i % tracks.length) + tracks.length) % tracks.length;
+    const t = tracks[tIdx];
+    const old = trackUrl;
+    trackUrl = URL.createObjectURL(t.file);
+    audio.src = trackUrl;
+    audio.muted = muted; audio.volume = volume;
+    if(old) setTimeout(()=>URL.revokeObjectURL(old), 1000);
+    $('track').textContent = '♪ ' + t.name + '（' + (tIdx+1) + '/' + tracks.length + '）';
+    if(playing) audio.play().then(() => { failRun = 0; }).catch(armAudioTap);
+  }
+  // 音つきの自動再生を拒まれたら、最初の操作で鳴らす
+  function armAudioTap(){
+    toast('クリックすると音が鳴ります', 4000);
+    const on = () => {
+      audio.play().catch(()=>{});
+      removeEventListener('mousedown', on, true); removeEventListener('keydown', on, true);
+      removeEventListener('touchstart', on, true);
+    };
+    addEventListener('mousedown', on, true);
+    addEventListener('keydown', on, true);
+    addEventListener('touchstart', on, true);
+  }
+  audio.addEventListener('ended', () => {
+    if(!asmr) return;
+    failRun = 0;
+    startTrack(tIdx + 1);   // 最後まで来たら最初に戻る
+    next();                 // 音の切れ目で絵も変える
+  });
+  audio.addEventListener('error', () => {
+    if(!asmr || !tracks.length) return;
+    toast(tracks[tIdx].name + ' は再生できませんでした', 3000);
+    if(++failRun >= tracks.length){ setAsmr(false); toast('再生できる音声がありませんでした', 4000); return; }
+    startTrack(tIdx + 1);
+  });
+
+  function setAsmr(on){
+    if(on && !tracks.length){ toast('このフォルダに音声ファイルがありません', 3000); return; }
+    asmr = on;
+    $('bAsmr').classList.toggle('act', on);
+    $('track').hidden = !on;
+    failRun = 0;
+    if(on) startTrack(tIdx);
+    else { audio.pause(); $('vtime').textContent = ''; }
+    S.save();
+    show(pos, true);        // 動画の扱い（消音・繰り返し）が変わるので作り直す
   }
 
   /* ---------- ホイールで拡大 ---------- */
@@ -566,8 +660,11 @@
     if(it.video){
       el = document.createElement('video');
       el.src = url; el.playsInline = true;
-      el.muted = muted || needTap; el.volume = volume;
-      el.onended = onEnd;
+      // ASMRモードでは動画を消音＋繰り返しにして、音声の邪魔をしない絵として使う
+      el.muted = asmr ? true : (muted || needTap);
+      el.loop = asmr;
+      el.volume = volume;
+      el.onended = asmr ? null : onEnd;
       // 再生できない形式のときは、黙って飛ばさずに理由を出す
       el.onerror = () => {
         toast(it.name + ' は再生できませんでした（このブラウザが対応していない形式です）', 3200);
@@ -667,7 +764,7 @@
   /* ---------- タイマー ---------- */
   function restart(){
     clearTimeout(timer);
-    const solo = span === 1 && items[order[pos]] && items[order[pos]].video;
+    const solo = !asmr && span === 1 && items[order[pos]] && items[order[pos]].video;
     if(playing && !solo){
       tStart = performance.now();
       timer = setTimeout(next, interval);
@@ -677,8 +774,13 @@
   }
   const mmss = t => Math.floor(t/60) + ':' + String(Math.floor(t%60)).padStart(2,'0');
   (function tick(){
-    const v = curPack && curPack.querySelector('video');
-    if(v && v.duration){                       // 動画は再生位置をそのまま進捗にする
+    const v = !asmr && curPack && curPack.querySelector('video');
+    if(asmr){                                  // 絵は秒数で送るので、帯はそのまま。音の残りを出す
+      $('vtime').textContent = (tracks.length && audio.duration)
+        ? '♪ 残り ' + mmss(Math.max(0, audio.duration - audio.currentTime)) : '';
+      if(playing && timer)
+        prog.style.width = (Math.min(1,(performance.now()-tStart)/interval)*100).toFixed(2) + '%';
+    } else if(v && v.duration){                // 動画は再生位置をそのまま進捗にする
       prog.style.width = (v.currentTime / v.duration * 100).toFixed(2) + '%';
       $('vtime').textContent = '残り ' + mmss(Math.max(0, v.duration - v.currentTime));
     } else {
@@ -695,6 +797,7 @@
       ? '<svg viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>'
       : '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z"/></svg>';
     if(curPack) curPack.querySelectorAll('video').forEach(vid => v ? vid.play().catch(()=>{}) : vid.pause());
+    if(asmr && tracks.length){ v ? audio.play().catch(()=>{}) : audio.pause(); }
     if(v) restart(); else { clearTimeout(timer); timer = null; }
   }
 
@@ -719,8 +822,8 @@
 
   $('bCsv').onclick = () => {
     const q = v => '"' + String(v).replace(/"/g,'""') + '"';
-    const csv = '\ufeff' + ['日時','フォルダ','ファイル名','位置','総数','見た枚数','視聴秒数','状態','きっかけ'].join(',')
-      + '\n' + logAll().map(r => [stamp(r.t), r.folder, r.name, r.idx, r.total, r.seen,
+    const csv = '\ufeff' + ['日時','フォルダ','ファイル名','音声','位置','総数','見た枚数','視聴秒数','状態','きっかけ'].join(',')
+      + '\n' + logAll().map(r => [stamp(r.t), r.folder, r.name, r.track || '', r.idx, r.total, r.seen,
           Math.round(r.ms/1000), r.playing ? '再生中' : '停止中', r.why].map(q).join(',')).join('\n');
     const u = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8'}));
     const a = document.createElement('a');
@@ -747,6 +850,7 @@
     applySound(); S.save();
     toast(muted ? '消音' : '音量 ' + Math.round(volume*100) + '%');
   };
+  $('bAsmr').onclick = () => setAsmr(!asmr);
   $('bShuffle').onclick = () => {
     shuffle = !shuffle;
     $('bShuffle').classList.toggle('act', shuffle);
@@ -783,6 +887,7 @@
     else if(e.key === 'ArrowDown'){ e.preventDefault(); setVolume(volume - 0.1); }
     else if(k === 'm'){ $('bSound').click(); }
     else if(k === '0'){ resetZoom(); }
+    else if(k === 'a'){ setAsmr(!asmr); }
     else if(k === 'f'){ $('bFull').click(); }
     else if(k === 'p'){ $('bPair').click(); }
     else if(k === 's'){ $('bShuffle').click(); }
@@ -833,6 +938,7 @@
   if(s.sortMode){ sortMode = s.sortMode; $('sort').value = sortMode; }
   if(s.shuffle){ shuffle = true; $('bShuffle').classList.add('act'); }
   if(s.pair){ pair = true; $('bPair').classList.add('act'); }
+  if(s.asmr){ asmr = true; $('bAsmr').classList.add('act'); }
   if(s.cover){ document.body.classList.add('cover'); $('bFit').classList.add('act'); }
   if(s.muted) muted = true;
   if(typeof s.volume === 'number') volume = s.volume;
