@@ -132,23 +132,23 @@
   .ggrid{flex:1 1 auto;overflow:auto;padding:12px;display:grid;gap:12px;align-content:start;
     grid-template-columns:repeat(auto-fill,minmax(var(--tw,150px),1fr))}
   .ggrid.sm{gap:8px}
-  .ggrid.sm .gfile{display:none}
-  .ggrid.sm .gt .gname{font-size:11px;padding:5px 7px 6px}
+  .ggrid.sm .gt .gname{font-size:11px;padding:5px 7px 0;line-height:1.4}
+  .ggrid.sm .gt .gfile{font-size:9px;padding:0 7px 6px}
   .ggrid.sm .gfav,.ggrid.sm .gchk{width:20px;height:20px;font-size:11px;top:4px}
   .ggrid.sm .gfav{right:4px}
   .ggrid.sm .gchk{left:4px}
-  #gSize{-webkit-appearance:none;appearance:none;width:90px;height:3px;border-radius:2px;
+  #gSize,#gTall{-webkit-appearance:none;appearance:none;width:76px;height:3px;border-radius:2px;
     background:#3a3e47;outline:none}
-  #gSize::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;
-    background:var(--acc);cursor:pointer}
+  #gSize::-webkit-slider-thumb,#gTall::-webkit-slider-thumb{-webkit-appearance:none;
+    width:12px;height:12px;border-radius:50%;background:var(--acc);cursor:pointer}
   .gsize{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);white-space:nowrap}
   .gt{position:relative;border-radius:11px;overflow:hidden;background:#16181d;
     border:1px solid var(--line);cursor:pointer}
   .gt.cur{border-color:var(--acc)}
   .gt.drop{outline:2px dashed var(--acc);outline-offset:-2px}
   .gt.dragging{opacity:.4}
-  .gthumb{aspect-ratio:1;background:#000;display:flex;align-items:center;justify-content:center;
-    overflow:hidden}
+  .gthumb{aspect-ratio:1 / var(--ar,1);background:#000;display:flex;align-items:center;
+    justify-content:center;overflow:hidden}
   .gthumb img,.gthumb video{width:100%;height:100%;object-fit:cover;display:block}
   .gthumb .snd{font-size:30px;color:#fff;opacity:.85}
   .gt .gname{display:block;width:100%;font-size:12px;color:var(--fg);padding:7px 9px 2px;
@@ -284,8 +284,11 @@
   <header class="gtop">
     <button class="gact" id="gClose">← 戻る</button>
     <input id="gq" type="search" placeholder="名前・ファイル名で絞り込む" autocomplete="off">
-    <span class="gsize" title="サムネイルの大きさ（− ＋ キー、⌘＋ホイールでも変わります）">
-      <span>大きさ</span><input type="range" id="gSize" min="90" max="360" step="10" value="150">
+    <span class="gsize" title="サムネイルの横幅（− ＋ キー、⌘＋ホイールでも変わります）">
+      <span>横</span><input type="range" id="gSize" min="90" max="420" step="10" value="150">
+    </span>
+    <span class="gsize" title="サムネイルの縦の長さ">
+      <span>縦</span><input type="range" id="gTall" min="60" max="190" step="5" value="100">
     </span>
     <button class="gtab act" id="gViewAll">すべて</button>
     <button class="gtab" id="gViewFav">★</button>
@@ -381,7 +384,7 @@
   const S = {
     load(){ try{ return JSON.parse(localStorage.getItem('slideshow')||'{}'); }catch{ return {}; } },
     save(){ try{ localStorage.setItem('slideshow', JSON.stringify(
-      {interval, shuffle, sortMode, pair, muted, volume, asmr, tw,
+      {interval, shuffle, sortMode, pair, muted, volume, asmr, tw, ta,
        cover:document.body.classList.contains('cover')})); }catch{} }
   };
 
@@ -1133,7 +1136,7 @@
   /* ---------- 一覧 ---------- */
   const gal = {open:false, q:'', view:'all', dir:'', tags:new Set(), sel:new Set(),
                drag:null, io:null, shown:0, panel:null, tiles:new Map()};
-  let tw = 150;                                   // サムネイルの一辺（px）
+  let tw = 150, ta = 100;                         // サムネイルの横幅(px)と、縦の割合(%)
   let pf = {dir:'', view:'all', q:'', tags:new Set()};   // 再生側に効いている絞り込み
   const thumbs = new Map();
   const coll2 = new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
@@ -1497,13 +1500,19 @@
     toast('並びを覚えました（並び順「自分の順番」）', 2600);
   }
 
-  // サムネイルの大きさ。小さいときはファイル名を隠して詰める
+  // サムネイルの大きさ。横幅と、横幅に対する縦の割合で決める
   function setThumbSize(v, save){
-    tw = Math.max(90, Math.min(360, Math.round(v / 10) * 10));
+    tw = Math.max(90, Math.min(420, Math.round(v / 10) * 10));
     const grid = $('gGrid');
     grid.style.setProperty('--tw', tw + 'px');
-    grid.classList.toggle('sm', tw < 130);
+    grid.classList.toggle('sm', tw < 130);      // 文字だけ小さくする（名前もファイル名も出す）
     $('gSize').value = tw;
+    if(save !== false) S.save();
+  }
+  function setThumbTall(v, save){
+    ta = Math.max(60, Math.min(190, Math.round(v / 5) * 5));
+    $('gGrid').style.setProperty('--ar', ta / 100);
+    $('gTall').value = ta;
     if(save !== false) S.save();
   }
 
@@ -1642,7 +1651,7 @@
   function openGallery(){
     if(!items.length && !tracks.length) return;
     gal.open = true;
-    setThumbSize(tw, false);
+    setThumbSize(tw, false); setThumbTall(ta, false);
     gal.dir = pf.dir; gal.view = pf.view; gal.q = pf.q;
     gal.tags = new Set(pf.tags || []);
     $('gq').value = gal.q;
@@ -1705,6 +1714,7 @@
     qTimer = setTimeout(() => { gal.shown = 0; drawGrid(); }, 250);
   };
   $('gSize').oninput = e => setThumbSize(+e.target.value);
+  $('gTall').oninput = e => setThumbTall(+e.target.value);
   $('pClose').onclick = closePanel;
   $('pPrev').onclick = () => panelStep(-1);
   $('pNext').onclick = () => panelStep(1);
@@ -1787,6 +1797,7 @@
   if(s.pair){ pair = true; $('bPair').classList.add('act'); }
   if(s.asmr){ asmr = true; $('bAsmr').classList.add('act'); }
   if(typeof s.tw === 'number') setThumbSize(s.tw, false);
+  if(typeof s.ta === 'number') setThumbTall(s.ta, false);
   if(s.cover){ document.body.classList.add('cover'); $('bFit').classList.add('act'); }
   if(s.muted) muted = true;
   if(typeof s.volume === 'number') volume = s.volume;
