@@ -169,6 +169,48 @@
   .gchk.on{background:var(--acc);color:#08121f;border-color:var(--acc)}
   .gmore{grid-column:1/-1;text-align:center;color:var(--dim);font-size:12px;padding:10px}
 
+  /* ---------- メモとタグ ---------- */
+  .gthumb{position:relative}
+  .gimg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+  .gnote{position:absolute;right:6px;bottom:6px;width:26px;height:26px;border-radius:7px;
+    display:grid;place-items:center;font-size:12px;border:1px solid #474c56;
+    background:rgba(10,11,13,.55);color:#8b909b;opacity:0;transition:opacity .15s}
+  .gt:hover .gnote{opacity:1}
+  .gnote.on{opacity:1;color:#08121f;background:var(--acc);border-color:var(--acc);font-weight:700}
+  .gtags{display:flex;flex-wrap:wrap;gap:4px;padding:0 9px 8px}
+  .ggrid.sm .gtags{display:none}
+  .tg{font-size:10px;color:#9fd0ff;background:rgba(106,168,255,.12);
+    border:1px solid rgba(106,168,255,.3);border-radius:999px;padding:1px 7px;white-space:nowrap}
+
+  .gpanel{width:300px;flex:0 0 auto;border-left:1px solid var(--line);display:flex;
+    flex-direction:column;overflow:auto;padding:14px;gap:10px;background:#0e1014}
+  .gpanel[hidden]{display:none}
+  .gpanel h3{margin:0;font-size:12px;color:var(--dim);font-weight:500}
+  .gpanel .pthumb{position:relative;aspect-ratio:16/10;border-radius:9px;overflow:hidden;
+    background:#000;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .gpanel .pthumb img,.gpanel .pthumb video{width:100%;height:100%;object-fit:contain}
+  .gpanel input,.gpanel textarea{font:inherit;font-size:13px;color:var(--fg);background:#16181d;
+    border:1px solid var(--line);border-radius:9px;padding:8px 10px;width:100%}
+  .gpanel textarea{flex:1 1 auto;min-height:160px;resize:vertical;line-height:1.7}
+  .gpanel input:focus,.gpanel textarea:focus{outline:none;border-color:var(--acc)}
+  .gpanel .pfile{font-size:11px;color:#5d626c;word-break:break-all}
+  .gpanel .prow{display:flex;gap:8px;align-items:center}
+
+  /* スライド中のメモ */
+  #noteline{display:flex;align-items:center;gap:6px;margin-top:5px;flex-wrap:wrap}
+  #noteline[hidden]{display:none}
+  #notePill{font-size:11px;color:#08121f;background:var(--acc);border-radius:999px;
+    padding:2px 9px;font-weight:600}
+  #notePill:hover{filter:brightness(1.1)}
+  #noteCard{position:fixed;left:16px;top:80px;z-index:7;max-width:min(420px,60vw);
+    max-height:60vh;overflow:auto;padding:13px 15px;border-radius:12px;
+    background:rgba(18,20,25,.95);border:1px solid var(--line);
+    box-shadow:0 10px 36px rgba(0,0,0,.6);font-size:13px;line-height:1.85;
+    color:#e3e6ec;white-space:pre-wrap;transition:opacity .3s}
+  #noteCard[hidden]{display:none}
+  body.idle #noteline{opacity:0}
+  body.hideui #noteline,body.hideui #noteCard{opacity:0;pointer-events:none}
+
   /* ---------- ピッカー ---------- */
   #picker{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:24px;
     background:radial-gradient(120% 90% at 50% 0%,#15171c 0%,var(--bg) 60%)}
@@ -198,7 +240,9 @@
 </div>
 
 <div id="prog"></div>
-<div id="info"><b id="fname"></b> <span id="fdir"></span><span id="track" hidden></span></div>
+<div id="info"><b id="fname"></b> <span id="fdir"></span><span id="track" hidden></span>
+  <span id="noteline" hidden></span></div>
+<div id="noteCard" hidden></div>
 <div id="resume"></div>
 <div id="toast"></div>
 
@@ -249,8 +293,25 @@
     <span class="gcount" id="gCount"></span>
   </header>
   <div class="gbody">
-    <nav class="gtree" id="gTree"></nav>
+    <nav class="gtree"><div id="gTree"></div><div id="gTagList"></div></nav>
     <div class="ggrid" id="gGrid"></div>
+    <aside class="gpanel" id="gPanel" hidden>
+      <div class="prow">
+        <h3 style="flex:1 1 auto">メモとタグ</h3>
+        <button class="gact" id="pPrev" title="前へ">←</button>
+        <button class="gact" id="pNext" title="次へ">→</button>
+        <button class="gact" id="pClose">閉じる</button>
+      </div>
+      <div class="pthumb" id="pThumb"></div>
+      <div class="pfile" id="pFile"></div>
+      <h3>名前</h3>
+      <input type="text" id="pName" placeholder="ファイル名のまま">
+      <h3>タグ（読点・カンマ・空白で区切る）</h3>
+      <input type="text" id="pTags" placeholder="例: 夜景, 人物">
+      <div class="gtags" id="pTagView" style="padding:0"></div>
+      <h3>メモ</h3>
+      <textarea id="pMemo" placeholder="ここに書いたことは、一覧では印だけになり、スライド中は N で開けます"></textarea>
+    </aside>
   </div>
   <footer class="gbot">
     <button class="gact" id="gPlayHere">この並びで再生</button>
@@ -279,7 +340,8 @@
       <kbd>M</kbd> 消音 ・ <kbd>↑</kbd><kbd>↓</kbd> 音量（動画に音があれば鳴ります）<br>
       ホイールで拡大 ・ ドラッグで動かす ・ <kbd>0</kbd> で戻す<br>
       <kbd>A</kbd> ASMRモード（同じフォルダの音声を流しながら絵を送る）<br>
-      <kbd>G</kbd> 一覧（名前を付ける・★・フォルダ移動・並べ替え）・一覧で <kbd>−</kbd> <kbd>＋</kbd> 大きさ
+      <kbd>G</kbd> 一覧（名前・メモ・タグ・★・フォルダ移動・並べ替え）<br>
+      <kbd>N</kbd> メモを開く ・ 一覧で <kbd>−</kbd> <kbd>＋</kbd> サムネイルの大きさ
     </div>
     <div id="err"></div>
     <div id="last"></div>
@@ -515,8 +577,9 @@
     sessStart = Date.now(); seen = 0;
     meta = allMeta()[folderKey] || {};          // このフォルダに付けた名前を引き当てる
     tracks.forEach(t => t.audio = true);
-    pf = {dir:'', view:'all', q:''};
-    gal.sel.clear(); gal.dir = ''; gal.view = 'all'; gal.q = '';
+    pf = {dir:'', view:'all', q:'', tags:new Set()};
+    gal.sel.clear(); gal.dir = ''; gal.view = 'all'; gal.q = ''; gal.tags.clear(); gal.panel = null;
+    $('gPanel').hidden = true;
     thumbs.forEach(u => URL.revokeObjectURL(u)); thumbs.clear();
     sortTracks();
     $('track').hidden = !(asmr && tracks.length);
@@ -537,8 +600,8 @@
     let idx = items.map((_,i)=>i).filter(i => matches(items[i], pf));
     if(!idx.length){                       // 絞り込みで空になったら全部に戻す
       idx = items.map((_,i)=>i);
-      if(pf.dir || pf.view !== 'all' || pf.q){
-        pf = {dir:'', view:'all', q:''};
+      if(pf.dir || pf.view !== 'all' || pf.q || (pf.tags && pf.tags.size)){
+        pf = {dir:'', view:'all', q:'', tags:new Set()};
         toast('その条件に合う絵が無いので、全部に戻しました', 3000);
       }
     }
@@ -983,7 +1046,11 @@
   document.addEventListener('keydown', e => {
     if(!picker.classList.contains('hidden')) return;
     if(gal.open){                                  // 一覧の間は、閉じる操作と大きさだけ受ける
-      if(e.target.tagName === 'INPUT'){ if(e.key === 'Escape') e.target.blur(); return; }
+      if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA'){
+        if(e.key === 'Escape') e.target.blur();
+        return;
+      }
+      if(e.key.toLowerCase() === 'n' && gal.panel){ closePanel(); return; }
       if(e.key === 'Escape' || e.key.toLowerCase() === 'g') closeGallery();
       else if(e.key === '+' || e.key === ';' || e.key === '=') setThumbSize(tw + 20);
       else if(e.key === '-') setThumbSize(tw - 20);
@@ -999,6 +1066,7 @@
     else if(k === '0'){ resetZoom(); }
     else if(k === 'a'){ setAsmr(!asmr); }
     else if(k === 'g'){ openGallery(); }
+    else if(k === 'n'){ toggleNote(); }
     else if(k === 'f'){ $('bFull').click(); }
     else if(k === 'p'){ $('bPair').click(); }
     else if(k === 's'){ $('bShuffle').click(); }
@@ -1057,11 +1125,15 @@
   const dispName = it => (meta[it.rel] && meta[it.rel].n) || it.name;
   const isFav = it => !!(meta[it.rel] && meta[it.rel].f);
   const ordOf = it => (meta[it.rel] && typeof meta[it.rel].o === 'number') ? meta[it.rel].o : Infinity;
+  const tagsOf = it => (meta[it.rel] && meta[it.rel].t) || [];
+  const memoOf = it => (meta[it.rel] && meta[it.rel].m) || '';
+  const hasNote = it => !!(memoOf(it) || tagsOf(it).length);
 
   /* ---------- 一覧 ---------- */
-  const gal = {open:false, q:'', view:'all', dir:'', sel:new Set(), drag:null, io:null, shown:0};
+  const gal = {open:false, q:'', view:'all', dir:'', tags:new Set(), sel:new Set(),
+               drag:null, io:null, shown:0, panel:null, tiles:new Map()};
   let tw = 150;                                   // サムネイルの一辺（px）
-  let pf = {dir:'', view:'all', q:''};          // 再生側に効いている絞り込み
+  let pf = {dir:'', view:'all', q:'', tags:new Set()};   // 再生側に効いている絞り込み
   const thumbs = new Map();
   const coll2 = new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
 
@@ -1076,8 +1148,13 @@
     if(f.dir && !(it.dir === f.dir || it.dir.startsWith(f.dir + '/'))) return false;
     if(f.view === 'fav' && !isFav(it)) return false;
     if(f.view === 'sel' && !gal.sel.has(it.rel)) return false;
+    if(f.tags && f.tags.size){
+      const ts = tagsOf(it);
+      for(const t of f.tags) if(!ts.includes(t)) return false;
+    }
     const q = (f.q||'').trim().toLowerCase();
-    if(q && !(dispName(it).toLowerCase().includes(q) || it.rel.toLowerCase().includes(q))) return false;
+    if(q && !(dispName(it).toLowerCase().includes(q) || it.rel.toLowerCase().includes(q)
+      || memoOf(it).toLowerCase().includes(q) || tagsOf(it).join(' ').toLowerCase().includes(q))) return false;
     return true;
   }
   function sortList(a, b){
@@ -1100,7 +1177,8 @@
     }
     return u;
   }
-  function fillThumb(box, it){
+  function fillThumb(outer, it){
+    const box = outer.querySelector('.gimg') || outer;
     if(it.audio){
       box.innerHTML = '<span class="snd">♪</span>';
       box.style.background = 'hsl(' + (hash(it.rel) % 360) + ',32%,20%)';
@@ -1125,6 +1203,13 @@
 
     const th = document.createElement('div');
     th.className = 'gthumb'; th.__it = it;
+    th.innerHTML = '<div class="gimg"></div>';
+    const note = document.createElement('button');
+    note.className = 'gnote' + (hasNote(it) ? ' on' : '');
+    note.textContent = '✎';
+    note.title = 'メモとタグ';
+    note.onclick = e => { e.stopPropagation(); openPanel(it); };
+    th.appendChild(note);
     el.appendChild(th);
     gal.io.observe(th);
 
@@ -1162,6 +1247,12 @@
     fl.className = 'gfile'; fl.textContent = it.name;
     el.appendChild(fl);
 
+    const tg = document.createElement('div');
+    tg.className = 'gtags';
+    renderTags(tg, it, 3);
+    el.appendChild(tg);
+
+    gal.tiles.set(it.rel, el);
     el.onclick = () => openFrom(it);
     el.ondragstart = e => { gal.drag = it; el.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; };
     el.ondragend = () => { el.classList.remove('dragging'); gal.drag = null;
@@ -1170,6 +1261,68 @@
     el.ondragleave = () => el.classList.remove('drop');
     el.ondrop = e => { e.preventDefault(); el.classList.remove('drop'); reorder(gal.drag, it); };
     return el;
+  }
+
+  function renderTags(box, it, max){
+    box.innerHTML = '';
+    const ts = tagsOf(it);
+    ts.slice(0, max || 99).forEach(t => {
+      const c = document.createElement('span'); c.className = 'tg'; c.textContent = t;
+      box.appendChild(c);
+    });
+    if(max && ts.length > max){
+      const c = document.createElement('span'); c.className = 'tg'; c.textContent = '+' + (ts.length - max);
+      box.appendChild(c);
+    }
+  }
+
+  // 一覧を作り直さずに、その1枚だけ描き直す
+  function refreshTile(it){
+    const el = gal.tiles.get(it.rel);
+    if(!el) return;
+    const nm = el.querySelector('.gname');
+    if(nm && nm.tagName !== 'INPUT'){ nm.textContent = dispName(it); nm.classList.toggle('set', named(it)); }
+    const note = el.querySelector('.gnote');
+    if(note) note.classList.toggle('on', hasNote(it));
+    const tg = el.querySelector('.gtags');
+    if(tg) renderTags(tg, it, 3);
+    const fav = el.querySelector('.gfav');
+    if(fav){ fav.classList.toggle('on', isFav(it)); fav.textContent = isFav(it) ? '★' : '☆'; }
+  }
+
+  /* ---------- メモとタグの引き出し ---------- */
+  function openPanel(it){
+    gal.panel = it;
+    $('gPanel').hidden = false;
+    $('pFile').textContent = it.rel;
+    $('pName').value = (meta[it.rel] && meta[it.rel].n) || '';
+    $('pName').placeholder = it.name;
+    $('pTags').value = tagsOf(it).join('、');
+    $('pMemo').value = memoOf(it);
+    renderTags($('pTagView'), it, 99);
+    const box = $('pThumb'); box.innerHTML = '<div class="gimg"></div>';
+    fillThumb(box, it);
+  }
+  function closePanel(){ panelSave(); gal.panel = null; $('gPanel').hidden = true; }
+  function panelStep(d){
+    if(!gal.panel) return;
+    panelSave();
+    const list = galList();
+    const i = list.indexOf(gal.panel);
+    const nx = list[Math.max(0, Math.min(list.length - 1, i + d))];
+    if(nx) openPanel(nx);
+  }
+  function panelSave(){
+    const it = gal.panel; if(!it) return;
+    const m = mOf(it.rel);
+    const nv = $('pName').value.trim(); if(nv) m.n = nv; else delete m.n;
+    const tv = $('pTags').value.split(/[、,\s]+/).map(t => t.trim()).filter(Boolean);
+    if(tv.length) m.t = [...new Set(tv)]; else delete m.t;
+    const mv = $('pMemo').value.replace(/\s+$/, ''); if(mv) m.m = mv; else delete m.m;
+    saveMeta();
+    renderTags($('pTagView'), it, 99);
+    refreshTile(it); countUp(); drawTags();
+    if(items[order[pos]] === it) showNames();
   }
 
   function editName(el, nm, it){
@@ -1258,7 +1411,60 @@
     $('fname').textContent = g.map(dispName).join(' ／ ');
     $('fdir').textContent = [named(g[0]) ? g[0].name : '', g[0].dir ? '— ' + g[0].dir : '']
       .filter(Boolean).join(' ');
+    showNote();
   }
+
+  // 左側に、使われているタグを数つきで出す
+  function drawTags(){
+    const box = $('gTagList');
+    const counts = new Map();
+    for(const it of everything()) for(const t of tagsOf(it)) counts.set(t, (counts.get(t)||0)+1);
+    box.innerHTML = '';
+    if(!counts.size) return;
+    const h = document.createElement('div');
+    h.style.cssText = 'color:#5d626c;padding:10px 8px 4px';
+    h.textContent = 'タグ';
+    box.appendChild(h);
+    [...counts.keys()].sort(coll2.compare).forEach(t => {
+      const b = document.createElement('button');
+      b.className = gal.tags.has(t) ? 'act' : '';
+      b.innerHTML = esc(t) + '<span class="n">' + counts.get(t) + '</span>';
+      b.onclick = () => {
+        gal.tags.has(t) ? gal.tags.delete(t) : gal.tags.add(t);
+        gal.shown = 0; drawTags(); drawGrid();
+      };
+      box.appendChild(b);
+    });
+  }
+
+  // スライド中は、印とタグだけ出しておいて N で開く
+  function showNote(){
+    const it = order.length ? items[order[pos]] : null;
+    const line = $('noteline');
+    line.innerHTML = '';
+    if(!it){ line.hidden = true; $('noteCard').hidden = true; return; }
+    tagsOf(it).slice(0,5).forEach(t => {
+      const c = document.createElement('span'); c.className = 'tg'; c.textContent = t; line.appendChild(c);
+    });
+    const mm = memoOf(it);
+    if(mm){
+      const b = document.createElement('button');
+      b.id = 'notePill'; b.textContent = '✎ メモ';
+      b.title = 'メモを開く (N)';
+      b.onclick = e => { e.stopPropagation(); toggleNote(); };
+      line.appendChild(b);
+    }
+    line.hidden = !line.childNodes.length;
+    if(!$('noteCard').hidden) openNote();
+  }
+  function openNote(){
+    const it = order.length ? items[order[pos]] : null;
+    const mm = it ? memoOf(it) : '';
+    if(!mm){ $('noteCard').hidden = true; return; }
+    $('noteCard').textContent = mm;
+    $('noteCard').hidden = false;
+  }
+  const toggleNote = () => $('noteCard').hidden ? openNote() : ($('noteCard').hidden = true);
 
   function countUp(){
     const list = galList();
@@ -1270,6 +1476,7 @@
   function drawGrid(){
     const grid = $('gGrid');
     grid.innerHTML = '';
+    gal.tiles.clear();
     gal.shown = 0;
     countUp();
     more();
@@ -1297,7 +1504,7 @@
       closeGallery();
       return;
     }
-    pf = {dir:gal.dir, view:gal.view, q:gal.q};     // 見ていた並びをそのまま再生に使う
+    pf = {dir:gal.dir, view:gal.view, q:gal.q, tags:new Set(gal.tags)};   // 見ていた並びをそのまま再生に使う
     buildOrder(false);
     const want = order.indexOf(items.indexOf(it));
     closeGallery();
@@ -1309,12 +1516,13 @@
     gal.open = true;
     setThumbSize(tw, false);
     gal.dir = pf.dir; gal.view = pf.view; gal.q = pf.q;
+    gal.tags = new Set(pf.tags || []);
     $('gq').value = gal.q;
     ['All','Fav','Sel'].forEach(v =>
       $('gView'+v).classList.toggle('act', gal.view === v.toLowerCase()));
     setPlaying(false);
     $('gallery').hidden = false;
-    drawTree(); drawGrid();
+    drawTree(); drawTags(); drawGrid();
   }
   function closeGallery(){
     gal.open = false;
@@ -1323,7 +1531,7 @@
   }
 
   function playWith(view){
-    gal.view = view; pf = {dir:gal.dir, view, q:gal.q};
+    gal.view = view; pf = {dir:gal.dir, view, q:gal.q, tags:new Set(gal.tags)};
     buildOrder(true);
     closeGallery();
     show(0, true);
@@ -1334,9 +1542,10 @@
     const q = v => '"' + String(v).replace(/"/g,'""') + '"';
     const rows = everything().map(it => {
       const m = meta[it.rel] || {};
-      return [folderKey, it.rel, m.n || '', m.f ? '★' : '', typeof m.o === 'number' ? m.o : ''];
+      return [folderKey, it.rel, m.n || '', m.f ? '★' : '', typeof m.o === 'number' ? m.o : '',
+              (m.t || []).join('、'), m.m || ''];
     });
-    return '\ufeff' + ['フォルダ','ファイル','名前','お気に入り','順番'].join(',') + '\n'
+    return '\ufeff' + ['フォルダ','ファイル','名前','お気に入り','順番','タグ','メモ'].join(',') + '\n'
       + rows.map(r => r.map(q).join(',')).join('\n');
   }
   function readCsv(text){
@@ -1363,6 +1572,18 @@
   $('gClose').onclick = closeGallery;
   $('gq').oninput = e => { gal.q = e.target.value; gal.shown = 0; drawGrid(); };
   $('gSize').oninput = e => setThumbSize(+e.target.value);
+  $('pClose').onclick = closePanel;
+  $('pPrev').onclick = () => panelStep(-1);
+  $('pNext').onclick = () => panelStep(1);
+  let pTimer;
+  ['pName','pTags','pMemo'].forEach(id => {
+    $(id).oninput = () => { clearTimeout(pTimer); pTimer = setTimeout(panelSave, 500); };
+    $(id).onchange = panelSave;
+    $(id).onkeydown = e => {
+      e.stopPropagation();
+      if(e.key === 'Escape'){ e.preventDefault(); e.target.blur(); closePanel(); }
+    };
+  });
   // ⌘（Ctrl）＋ホイールでも大きさを変える。ふつうのホイールはそのまま巻物
   $('gGrid').addEventListener('wheel', e => {
     if(!(e.ctrlKey || e.metaKey)) return;
@@ -1410,11 +1631,15 @@
       if((r[3]||'').trim()) m.f = 1; else delete m.f;
       const ov = (r[4]||'').trim();
       if(ov !== '' && !isNaN(+ov)) m.o = +ov; else delete m.o;
+      const tv = (r[5]||'').split(/[、,\s]+/).map(t=>t.trim()).filter(Boolean);
+      if(tv.length) m.t = [...new Set(tv)]; else delete m.t;
+      const mv = (r[6]||'').replace(/\s+$/,'');
+      if(mv) m.m = mv; else delete m.m;
       hit++;
     }
     saveMeta();
     $('gCsvFile').value = '';
-    drawGrid(); showNames();
+    drawTags(); drawGrid(); showNames();
     toast(hit + ' 件を読み込みました', 3000);
   };
 
