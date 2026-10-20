@@ -105,6 +105,59 @@
   .logbox .acts button:hover{background:#22252c;color:#fff}
   #last{margin-top:16px;font-size:12px;color:var(--dim);line-height:1.7}
 
+  /* ---------- 一覧 ---------- */
+  #gallery{position:fixed;inset:0;z-index:15;display:flex;flex-direction:column;
+    background:#0c0d10}
+  #gallery[hidden]{display:none}
+  .gtop,.gbot{display:flex;align-items:center;gap:8px;padding:10px 14px;
+    border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .gbot{border-bottom:0;border-top:1px solid var(--line)}
+  #gq{flex:1 1 200px;min-width:120px;font:inherit;font-size:13px;color:var(--fg);
+    background:#16181d;border:1px solid var(--line);border-radius:9px;padding:7px 11px}
+  #gq:focus{outline:none;border-color:var(--acc)}
+  .gtab,.gact{font-size:12px;color:#aeb3bd;border:1px solid var(--line);border-radius:8px;
+    padding:6px 11px;background:#16181d;white-space:nowrap}
+  .gtab:hover,.gact:hover{background:#22252c;color:#fff}
+  .gtab.act{color:#08121f;background:var(--acc);border-color:var(--acc);font-weight:600}
+  .gcount{font-size:12px;color:var(--dim);white-space:nowrap}
+  .gsep{flex:1 1 auto}
+  .gbody{flex:1 1 auto;display:flex;min-height:0}
+  .gtree{width:190px;flex:0 0 auto;overflow:auto;padding:10px 8px;
+    border-right:1px solid var(--line);font-size:12px}
+  .gtree button{display:block;width:100%;text-align:left;padding:5px 8px;border-radius:7px;
+    color:#aeb3bd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gtree button:hover{background:#1d2026;color:#fff}
+  .gtree button.act{background:#22252c;color:var(--acc)}
+  .gtree .n{color:#5d626c;margin-left:4px}
+  .ggrid{flex:1 1 auto;overflow:auto;padding:12px;display:grid;gap:12px;align-content:start;
+    grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  .gt{position:relative;border-radius:11px;overflow:hidden;background:#16181d;
+    border:1px solid var(--line);cursor:pointer}
+  .gt.cur{border-color:var(--acc)}
+  .gt.drop{outline:2px dashed var(--acc);outline-offset:-2px}
+  .gt.dragging{opacity:.4}
+  .gthumb{aspect-ratio:1;background:#000;display:flex;align-items:center;justify-content:center;
+    overflow:hidden}
+  .gthumb img,.gthumb video{width:100%;height:100%;object-fit:cover;display:block}
+  .gthumb .snd{font-size:30px;color:#fff;opacity:.85}
+  .gt .gname{display:block;width:100%;font-size:12px;color:var(--fg);padding:7px 9px 2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gt .gname.set{color:var(--acc)}
+  .gt input.gedit{display:block;background:#22252c;border:1px solid var(--acc);border-radius:6px;
+    color:var(--fg);font:inherit;font-size:12px;padding:5px 7px;margin:4px 6px 0;
+    width:calc(100% - 12px)}
+  .gt input.gedit:focus{outline:none}
+  .gt .gfile{font-size:10px;color:#5d626c;padding:0 9px 8px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .gfav,.gchk{position:absolute;top:6px;width:26px;height:26px;border-radius:7px;
+    display:grid;place-items:center;background:rgba(10,11,13,.55);font-size:13px;color:#6a6f79}
+  .gfav:hover,.gchk:hover{color:#fff;background:rgba(10,11,13,.85)}
+  .gfav{right:6px}
+  .gfav.on{color:#ffd45e}
+  .gchk{left:6px;font-size:14px;border:1px solid #474c56}
+  .gchk.on{background:var(--acc);color:#08121f;border-color:var(--acc)}
+  .gmore{grid-column:1/-1;text-align:center;color:var(--dim);font-size:12px;padding:10px}
+
   /* ---------- ピッカー ---------- */
   #picker{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:24px;
     background:radial-gradient(120% 90% at 50% 0%,#15171c 0%,var(--bg) 60%)}
@@ -145,6 +198,9 @@
   <span class="sep"></span>
   <span class="fld"><span id="ivalLabel">5s</span><input type="range" id="ival" min="1" max="30" step="1" value="5" title="表示秒数"></span>
   <span class="sep"></span>
+  <button class="btn" id="bGal" title="一覧を見る (G)">
+    <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.2"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.2"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.2"/></svg>
+  </button>
   <button class="btn" id="bAsmr" title="ASMRモード — 音声ファイルを中心に流す (A)">
     <svg viewBox="0 0 24 24"><path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="16.5" cy="16" r="2.5"/></svg>
   </button>
@@ -160,12 +216,39 @@
     <option value="name">名前順</option>
     <option value="date">更新日順</option>
     <option value="dateDesc">更新日（新しい順）</option>
+    <option value="manual">自分の順番</option>
   </select>
   <button class="btn" id="bFit" title="全画面に合わせる/はみ出し (C)"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="1.5"/></svg></button>
   <button class="btn" id="bFull" title="フルスクリーン (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 15v5h-5M20 9V4h-5M4 15v5h5"/></svg></button>
   <span class="sep"></span>
   <span id="count">0 / 0</span>
   <button class="btn" id="bOpen" title="別のフォルダを開く"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+</div>
+
+<div id="gallery" hidden>
+  <header class="gtop">
+    <button class="gact" id="gClose">← 戻る</button>
+    <input id="gq" type="search" placeholder="名前・ファイル名で絞り込む" autocomplete="off">
+    <button class="gtab act" id="gViewAll">すべて</button>
+    <button class="gtab" id="gViewFav">★</button>
+    <button class="gtab" id="gViewSel">選択中</button>
+    <span class="gcount" id="gCount"></span>
+  </header>
+  <div class="gbody">
+    <nav class="gtree" id="gTree"></nav>
+    <div class="ggrid" id="gGrid"></div>
+  </div>
+  <footer class="gbot">
+    <button class="gact" id="gPlayHere">この並びで再生</button>
+    <button class="gact" id="gPlayFav">★だけ再生</button>
+    <button class="gact" id="gPlaySel">選んだものだけ再生</button>
+    <button class="gact" id="gClearSel">選択を解除</button>
+    <span class="gsep"></span>
+    <span class="gcount" id="gHint">名前をクリックすると書き換えられます・ドラッグで並べ替え</span>
+    <button class="gact" id="gCsvOut">CSVで書き出す</button>
+    <button class="gact" id="gCsvIn">CSVを読み込む</button>
+    <input type="file" id="gCsvFile" accept=".csv,text/csv" hidden>
+  </footer>
 </div>
 
 <div id="picker">
@@ -181,7 +264,8 @@
       <kbd>P</kbd> 縦長を左右に並べる ・ <kbd>S</kbd> シャッフル ・ <kbd>C</kbd> 表示切替 ・ <kbd>H</kbd> UI非表示<br>
       <kbd>M</kbd> 消音 ・ <kbd>↑</kbd><kbd>↓</kbd> 音量（動画に音があれば鳴ります）<br>
       ホイールで拡大 ・ ドラッグで動かす ・ <kbd>0</kbd> で戻す<br>
-      <kbd>A</kbd> ASMRモード（同じフォルダの音声を流しながら絵を送る）
+      <kbd>A</kbd> ASMRモード（同じフォルダの音声を流しながら絵を送る）<br>
+      <kbd>G</kbd> 一覧（名前を付ける・★・フォルダ移動・並べ替え）
     </div>
     <div id="err"></div>
     <div id="last"></div>
@@ -415,6 +499,11 @@
     const rel0 = items[0].rel;
     folderKey = rel0.includes('/') ? rel0.split('/')[0] : '(フォルダ直下)';
     sessStart = Date.now(); seen = 0;
+    meta = allMeta()[folderKey] || {};          // このフォルダに付けた名前を引き当てる
+    tracks.forEach(t => t.audio = true);
+    pf = {dir:'', view:'all', q:''};
+    gal.sel.clear(); gal.dir = ''; gal.view = 'all'; gal.q = '';
+    thumbs.forEach(u => URL.revokeObjectURL(u)); thumbs.clear();
     sortTracks();
     $('track').hidden = !(asmr && tracks.length);
     if(asmr && tracks.length) startTrack(0);
@@ -431,16 +520,18 @@
   }
 
   function buildOrder(reset){
-    const idx = items.map((_,i)=>i);
+    let idx = items.map((_,i)=>i).filter(i => matches(items[i], pf));
+    if(!idx.length){                       // 絞り込みで空になったら全部に戻す
+      idx = items.map((_,i)=>i);
+      if(pf.dir || pf.view !== 'all' || pf.q){
+        pf = {dir:'', view:'all', q:''};
+        toast('その条件に合う絵が無いので、全部に戻しました', 3000);
+      }
+    }
     if(shuffle){
       for(let i=idx.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [idx[i],idx[j]]=[idx[j],idx[i]]; }
     } else {
-      const coll = new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
-      idx.sort((a,b)=>{
-        if(sortMode==='name') return coll.compare(items[a].rel, items[b].rel);
-        if(sortMode==='date') return items[a].time - items[b].time;
-        return items[b].time - items[a].time;
-      });
+      idx.sort((a,b)=>sortList(items[a], items[b]));
     }
     sortTracks();
     const cur = order.length ? order[pos] : -1;
@@ -741,9 +832,7 @@
       }, 700);
     });
 
-    const names = g.map(k => items[order[k]].name);
-    $('fname').textContent = names.join(' ／ ');
-    $('fdir').textContent = items[order[g[0]]].dir ? '— ' + items[order[g[0]]].dir : '';
+    showNames();
     $('count').textContent = (g.length > 1 ? (pos+1) + '–' + (pos+g.length) : (pos+1)) + ' / ' + order.length;
     $('colsLabel').textContent = g.length;
 
@@ -879,6 +968,10 @@
 
   document.addEventListener('keydown', e => {
     if(!picker.classList.contains('hidden')) return;
+    if(gal.open){                                  // 一覧の間は、閉じる操作だけ受ける
+      if(e.key === 'Escape' || (e.key.toLowerCase() === 'g' && e.target.tagName !== 'INPUT')) closeGallery();
+      return;
+    }
     const k = e.key.toLowerCase();
     if(k === ' '){ e.preventDefault(); setPlaying(!playing); }
     else if(e.key === 'ArrowRight' || k === 'j'){ next(); }
@@ -888,6 +981,7 @@
     else if(k === 'm'){ $('bSound').click(); }
     else if(k === '0'){ resetZoom(); }
     else if(k === 'a'){ setAsmr(!asmr); }
+    else if(k === 'g'){ openGallery(); }
     else if(k === 'f'){ $('bFull').click(); }
     else if(k === 'p'){ $('bPair').click(); }
     else if(k === 's'){ $('bShuffle').click(); }
@@ -931,6 +1025,362 @@
   }
   ['mousemove','mousedown','keydown','wheel','touchstart'].forEach(ev =>
     document.addEventListener(ev, wake, {passive:true}));
+
+  /* ---------- 名前・★・並び順 ---------- */
+  // ファイル名とは別の名前を、フォルダ名＋相対パスに紐づけて持つ
+  const META_KEY = 'slideshow.meta';
+  let meta = {};                       // rel -> {n:名前, f:★, o:自分の順番}
+  const allMeta = () => { try{ return JSON.parse(localStorage.getItem(META_KEY)||'{}'); }catch{ return {}; } };
+  function saveMeta(){
+    try{ const all = allMeta(); all[folderKey] = meta; localStorage.setItem(META_KEY, JSON.stringify(all)); }
+    catch{ toast('名前を保存できませんでした（保存領域がいっぱいかもしれません）', 4000); }
+  }
+  const mOf = rel => meta[rel] || (meta[rel] = {});
+  const named = it => !!(meta[it.rel] && meta[it.rel].n);
+  const dispName = it => (meta[it.rel] && meta[it.rel].n) || it.name;
+  const isFav = it => !!(meta[it.rel] && meta[it.rel].f);
+  const ordOf = it => (meta[it.rel] && typeof meta[it.rel].o === 'number') ? meta[it.rel].o : Infinity;
+
+  /* ---------- 一覧 ---------- */
+  const gal = {open:false, q:'', view:'all', dir:'', sel:new Set(), drag:null, io:null, shown:0};
+  let pf = {dir:'', view:'all', q:''};          // 再生側に効いている絞り込み
+  const thumbs = new Map();
+  const coll2 = new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
+
+  gal.io = new IntersectionObserver(es => {
+    for(const e of es) if(e.isIntersecting){ gal.io.unobserve(e.target); fillThumb(e.target, e.target.__it); }
+  }, {root: $('gGrid'), rootMargin:'400px'});
+
+  const everything = () => items.concat(tracks);
+  const hash = t => { let h=0; for(let i=0;i<t.length;i++) h=(h*31+t.charCodeAt(i))|0; return Math.abs(h); };
+
+  function matches(it, f){
+    if(f.dir && !(it.dir === f.dir || it.dir.startsWith(f.dir + '/'))) return false;
+    if(f.view === 'fav' && !isFav(it)) return false;
+    if(f.view === 'sel' && !gal.sel.has(it.rel)) return false;
+    const q = (f.q||'').trim().toLowerCase();
+    if(q && !(dispName(it).toLowerCase().includes(q) || it.rel.toLowerCase().includes(q))) return false;
+    return true;
+  }
+  function sortList(a, b){
+    if(sortMode === 'manual'){ const d = ordOf(a) - ordOf(b); if(d) return d; }
+    if(sortMode === 'date') return a.time - b.time;
+    if(sortMode === 'dateDesc') return b.time - a.time;
+    return coll2.compare(a.rel, b.rel);
+  }
+  const galList = () => everything().filter(it => matches(it, gal)).sort(sortList);
+
+  function thumbUrl(it){
+    let u = thumbs.get(it.rel);
+    if(!u){
+      u = URL.createObjectURL(it.file);
+      thumbs.set(it.rel, u);
+      if(thumbs.size > 400){                      // 作りすぎないよう古いものから捨てる
+        const k = thumbs.keys().next().value;
+        URL.revokeObjectURL(thumbs.get(k)); thumbs.delete(k);
+      }
+    }
+    return u;
+  }
+  function fillThumb(box, it){
+    if(it.audio){
+      box.innerHTML = '<span class="snd">♪</span>';
+      box.style.background = 'hsl(' + (hash(it.rel) % 360) + ',32%,20%)';
+      return;
+    }
+    const url = thumbUrl(it);
+    if(it.video){
+      const v = document.createElement('video');
+      v.src = url; v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+      v.onloadedmetadata = () => { try{ v.currentTime = Math.min(0.2, (v.duration||1)/3); }catch{} };
+      box.appendChild(v);
+    } else {
+      const im = document.createElement('img'); im.src = url; im.alt = ''; box.appendChild(im);
+    }
+  }
+
+  function tile(it){
+    const el = document.createElement('div');
+    el.className = 'gt' + (items[order[pos]] === it ? ' cur' : '');
+    el.dataset.rel = it.rel;
+    el.draggable = true;
+
+    const th = document.createElement('div');
+    th.className = 'gthumb'; th.__it = it;
+    el.appendChild(th);
+    gal.io.observe(th);
+
+    const fav = document.createElement('button');
+    fav.className = 'gfav' + (isFav(it) ? ' on' : ''); fav.textContent = isFav(it) ? '★' : '☆';
+    fav.title = 'お気に入り';
+    fav.onclick = e => {
+      e.stopPropagation();
+      const m = mOf(it.rel); m.f = m.f ? 0 : 1; if(!m.f) delete m.f;
+      saveMeta(); fav.classList.toggle('on', !!m.f); fav.textContent = m.f ? '★' : '☆'; countUp();
+    };
+    el.appendChild(fav);
+
+    const chk = document.createElement('button');
+    chk.className = 'gchk' + (gal.sel.has(it.rel) ? ' on' : '');
+    chk.textContent = gal.sel.has(it.rel) ? '✓' : '';
+    chk.title = '選ぶ';
+    chk.onclick = e => {
+      e.stopPropagation();
+      gal.sel.has(it.rel) ? gal.sel.delete(it.rel) : gal.sel.add(it.rel);
+      const on = gal.sel.has(it.rel);
+      chk.classList.toggle('on', on); chk.textContent = on ? '✓' : '';
+      countUp();
+    };
+    el.appendChild(chk);
+
+    const nm = document.createElement('div');
+    nm.className = 'gname' + (named(it) ? ' set' : '');
+    nm.textContent = dispName(it);
+    nm.title = '押すと名前を書き換えられます';
+    nm.onclick = e => { e.stopPropagation(); editName(el, nm, it); };
+    el.appendChild(nm);
+
+    const fl = document.createElement('div');
+    fl.className = 'gfile'; fl.textContent = it.name;
+    el.appendChild(fl);
+
+    el.onclick = () => openFrom(it);
+    el.ondragstart = e => { gal.drag = it; el.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; };
+    el.ondragend = () => { el.classList.remove('dragging'); gal.drag = null;
+      [...$('gGrid').children].forEach(c=>c.classList.remove('drop')); };
+    el.ondragover = e => { if(gal.drag && gal.drag !== it){ e.preventDefault(); el.classList.add('drop'); } };
+    el.ondragleave = () => el.classList.remove('drop');
+    el.ondrop = e => { e.preventDefault(); el.classList.remove('drop'); reorder(gal.drag, it); };
+    return el;
+  }
+
+  function editName(el, nm, it){
+    const inp = document.createElement('input');
+    inp.className = 'gedit'; inp.type = 'text';
+    inp.value = (meta[it.rel] && meta[it.rel].n) || '';
+    inp.placeholder = it.name;
+    el.replaceChild(inp, nm);
+    inp.focus(); inp.select();
+    const done = save => {
+      if(save){
+        const v = inp.value.trim();
+        const m = mOf(it.rel);
+        if(v) m.n = v; else delete m.n;
+        saveMeta();
+      }
+      nm.textContent = dispName(it);
+      nm.classList.toggle('set', named(it));
+      if(inp.parentNode === el) el.replaceChild(nm, inp);
+      countUp();
+      if(items[order[pos]] === it) showNames();
+    };
+    inp.onblur = () => done(true);
+    inp.onkeydown = e => {
+      e.stopPropagation();
+      if(e.key === 'Enter'){ e.preventDefault(); inp.blur(); }
+      else if(e.key === 'Escape'){ e.preventDefault(); inp.onblur = null; done(false); }
+    };
+    inp.onclick = e => e.stopPropagation();
+  }
+
+  // 自分の順番を作る（いま見えている並びに通し番号を振り直す）
+  function reorder(from, to){
+    if(!from || from === to) return;
+    const list = galList();
+    const a = list.indexOf(from), b = list.indexOf(to);
+    if(a < 0 || b < 0) return;
+    list.splice(a, 1); list.splice(b, 0, from);
+    list.forEach((it, i) => { mOf(it.rel).o = i; });
+    saveMeta();
+    if(sortMode !== 'manual'){ sortMode = 'manual'; $('sort').value = 'manual'; S.save(); }
+    drawGrid();
+    toast('並びを覚えました（並び順「自分の順番」）', 2600);
+  }
+
+  function drawTree(){
+    const all = everything();
+    const dirs = new Map();
+    for(const it of all){
+      const parts = it.dir ? it.dir.split('/') : [];
+      for(let i=1;i<=parts.length;i++){
+        const d = parts.slice(0,i).join('/');
+        dirs.set(d, (dirs.get(d)||0)+1);
+      }
+    }
+    const box = $('gTree'); box.innerHTML = '';
+    const add = (label, dir, count, depth) => {
+      const b = document.createElement('button');
+      b.className = (gal.dir === dir ? 'act' : '');
+      b.style.paddingLeft = (8 + depth*12) + 'px';
+      b.innerHTML = esc(label) + '<span class="n">' + count + '</span>';
+      b.onclick = () => { gal.dir = dir; gal.shown = 0; drawTree(); drawGrid(); };
+      box.appendChild(b);
+    };
+    add('すべて', '', all.length, 0);
+    [...dirs.keys()].sort(coll2.compare).forEach(d =>
+      add(d.split('/').pop(), d, dirs.get(d), d.split('/').length - 1));
+  }
+
+  // 付けた名前を優先して出し、元のファイル名は小さく併記する
+  function showNames(){
+    if(!order.length) return;
+    const g = [];
+    for(let k = pos; k < pos + span && k < order.length; k++) g.push(items[order[k]]);
+    if(!g.length) return;
+    $('fname').textContent = g.map(dispName).join(' ／ ');
+    $('fdir').textContent = [named(g[0]) ? g[0].name : '', g[0].dir ? '— ' + g[0].dir : '']
+      .filter(Boolean).join(' ');
+  }
+
+  function countUp(){
+    const list = galList();
+    $('gCount').textContent = list.length + '件' +
+      (gal.sel.size ? ' ・ 選択 ' + gal.sel.size : '') +
+      ' ・ 名前つき ' + list.filter(named).length;
+  }
+
+  function drawGrid(){
+    const grid = $('gGrid');
+    grid.innerHTML = '';
+    gal.shown = 0;
+    countUp();
+    more();
+  }
+  function more(){
+    const grid = $('gGrid'), list = galList();
+    const end = Math.min(list.length, gal.shown + 200);
+    const frag = document.createDocumentFragment();
+    for(let i = gal.shown; i < end; i++) frag.appendChild(tile(list[i]));
+    const old = grid.querySelector('.gmore'); if(old) old.remove();
+    grid.appendChild(frag);
+    gal.shown = end;
+    if(gal.shown < list.length){
+      const b = document.createElement('div');
+      b.className = 'gmore'; b.textContent = 'あと ' + (list.length - gal.shown) + ' 件（下までスクロール）';
+      grid.appendChild(b);
+    }
+  }
+
+  function openFrom(it){
+    if(it.audio){                                  // 音声は、その曲から流す
+      if(!asmr) setAsmr(true);
+      const i = tracks.indexOf(it);
+      if(i >= 0) startTrack(i);
+      closeGallery();
+      return;
+    }
+    pf = {dir:gal.dir, view:gal.view, q:gal.q};     // 見ていた並びをそのまま再生に使う
+    buildOrder(false);
+    const want = order.indexOf(items.indexOf(it));
+    closeGallery();
+    show(want >= 0 ? want : 0, true);
+  }
+
+  function openGallery(){
+    if(!items.length && !tracks.length) return;
+    gal.open = true;
+    gal.dir = pf.dir; gal.view = pf.view; gal.q = pf.q;
+    $('gq').value = gal.q;
+    ['All','Fav','Sel'].forEach(v =>
+      $('gView'+v).classList.toggle('act', gal.view === v.toLowerCase()));
+    setPlaying(false);
+    $('gallery').hidden = false;
+    drawTree(); drawGrid();
+  }
+  function closeGallery(){
+    gal.open = false;
+    $('gallery').hidden = true;
+    setPlaying(true);
+  }
+
+  function playWith(view){
+    gal.view = view; pf = {dir:gal.dir, view, q:gal.q};
+    buildOrder(true);
+    closeGallery();
+    show(0, true);
+  }
+
+  /* ---------- 名前の書き出し・読み込み ---------- */
+  function metaCsv(){
+    const q = v => '"' + String(v).replace(/"/g,'""') + '"';
+    const rows = everything().map(it => {
+      const m = meta[it.rel] || {};
+      return [folderKey, it.rel, m.n || '', m.f ? '★' : '', typeof m.o === 'number' ? m.o : ''];
+    });
+    return '\ufeff' + ['フォルダ','ファイル','名前','お気に入り','順番'].join(',') + '\n'
+      + rows.map(r => r.map(q).join(',')).join('\n');
+  }
+  function readCsv(text){
+    const rows = [];
+    let cur = [], val = '', inq = false;
+    text = text.replace(/^\ufeff/, '');
+    for(let i=0;i<text.length;i++){
+      const c = text[i];
+      if(inq){
+        if(c === '"' && text[i+1] === '"'){ val += '"'; i++; }
+        else if(c === '"') inq = false;
+        else val += c;
+      } else if(c === '"') inq = true;
+      else if(c === ','){ cur.push(val); val = ''; }
+      else if(c === '\n'){ cur.push(val); rows.push(cur); cur = []; val = ''; }
+      else if(c !== '\r') val += c;
+    }
+    if(val || cur.length){ cur.push(val); rows.push(cur); }
+    return rows;
+  }
+
+  /* ---------- 一覧の操作 ---------- */
+  $('bGal').onclick = openGallery;
+  $('gClose').onclick = closeGallery;
+  $('gq').oninput = e => { gal.q = e.target.value; gal.shown = 0; drawGrid(); };
+  $('gq').onkeydown = e => { e.stopPropagation(); if(e.key === 'Escape'){ e.target.value=''; gal.q=''; drawGrid(); } };
+  ['All','Fav','Sel'].forEach(v => {
+    $('gView'+v).onclick = () => {
+      gal.view = v.toLowerCase(); gal.shown = 0;
+      ['All','Fav','Sel'].forEach(w => $('gView'+w).classList.toggle('act', w === v));
+      drawGrid();
+    };
+  });
+  $('gGrid').onscroll = e => {
+    const g = e.target;
+    if(g.scrollTop + g.clientHeight > g.scrollHeight - 400) more();
+  };
+  $('gPlayHere').onclick = () => playWith(gal.view);
+  $('gPlayFav').onclick = () => playWith('fav');
+  $('gPlaySel').onclick = () => {
+    if(!gal.sel.size){ toast('選ばれているものがありません', 2600); return; }
+    playWith('sel');
+  };
+  $('gClearSel').onclick = () => { gal.sel.clear(); drawGrid(); };
+  $('gCsvOut').onclick = () => {
+    const u = URL.createObjectURL(new Blob([metaCsv()], {type:'text/csv;charset=utf-8'}));
+    const a = document.createElement('a');
+    a.href = u; a.download = (folderKey || 'slideshow') + '-names.csv'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(u), 5000);
+  };
+  $('gCsvIn').onclick = () => $('gCsvFile').click();
+  $('gCsvFile').onchange = async () => {
+    const f = $('gCsvFile').files[0];
+    if(!f) return;
+    const rows = readCsv(await f.text());
+    let hit = 0;
+    const byRel = new Map(everything().map(it => [it.rel, it]));
+    for(const r of rows.slice(1)){
+      const rel = (r[1]||'').trim();
+      if(!byRel.has(rel)) continue;
+      const m = mOf(rel);
+      const nv = (r[2]||'').trim();
+      if(nv) m.n = nv; else delete m.n;
+      if((r[3]||'').trim()) m.f = 1; else delete m.f;
+      const ov = (r[4]||'').trim();
+      if(ov !== '' && !isNaN(+ov)) m.o = +ov; else delete m.o;
+      hit++;
+    }
+    saveMeta();
+    $('gCsvFile').value = '';
+    drawGrid(); showNames();
+    toast(hit + ' 件を読み込みました', 3000);
+  };
 
   /* ---------- 起動時に設定を復元 ---------- */
   const s = S.load();
