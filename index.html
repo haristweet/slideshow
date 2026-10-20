@@ -581,6 +581,7 @@
     gal.sel.clear(); gal.dir = ''; gal.view = 'all'; gal.q = ''; gal.tags.clear(); gal.panel = null;
     $('gPanel').hidden = true;
     thumbs.forEach(u => URL.revokeObjectURL(u)); thumbs.clear();
+    pending.clear(); gal.tiles.clear();
     sortTracks();
     $('track').hidden = !(asmr && tracks.length);
     if(asmr && tracks.length) startTrack(0);
@@ -1165,34 +1166,140 @@
   }
   const galList = () => everything().filter(it => matches(it, gal)).sort(sortList);
 
-  function thumbUrl(it){
-    let u = thumbs.get(it.rel);
-    if(!u){
-      u = URL.createObjectURL(it.file);
+  /* ---------- サムネイルは一度だけ作って取っておく ---------- */
+  // 元の写真をそのまま縮めて出すと、150pxのタイルのために毎回フルサイズで
+  // 展開することになる。横320pxに焼き直したものを作り、メモリと IndexedDB に置く。
+  const THUMB_W = 320;
+  const pending = new Map();
+  let busyN = 0; const waitQ = [];
+  const slot = () => new Promise(res => {
+    const go = () => { busyN++; res(); };
+    busyN < 4 ? go() : waitQ.push(go);           // 一度に4枚まで
+  });
+  const free = () => { busyN--; const g = waitQ.shift(); if(g) g(); };
+
+  const DB_NAME = 'slideshow-thumbs', STORE = 'thumbs';
+  let dbP = null;
+  function db(){
+    if(dbP) return dbP;
+    dbP = new Promise(res => {
+      let r;
+      try{ r = indexedDB.open(DB_NAME, 1); }catch{ return res(null); }
+      r.onupgradeneeded = () => { try{ r.result.createObjectStore(STORE); }catch{} };
+      r.onsuccess = () => res(r.result);
+      r.onerror = r.onblocked = () => res(null);
+    });
+    return dbP;
+  }
+  function dbWork(mode, fn){
+    return db().then(d => d ? new Promise(res => {
+      try{
+        const req = fn(d.transaction(STORE, mode).objectStore(STORE));
+        req.onsuccess = () => res(req.result);
+        req.onerror = () => res(null);
+      }catch{ res(null); }
+    }) : null);
+  }
+  const dbGet = k => dbWork('readonly', st => st.get(k));
+  const dbPut = (k, v) => dbWork('readwrite', st => st.put(v, k));
+  // 溜まりすぎたら、まるごと捨てて作り直す
+  db().then(async () => {
+    const c = await dbWork('readonly', st => st.count());
+    if(typeof c === 'number' && c > 8000) dbWork('readwrite', st => st.clear());
+  });
+
+  const thumbKey = it => folderKey + '|' + it.rel + '|' + it.file.size + '|' + (it.file.lastModified||0) + '|' + THUMB_W;
+
+  function drawToBlob(src, w, h){
+    const k = Math.min(1, THUMB_W / Math.max(1, w));
+    const cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const x = c.getContext('2d');
+    x.fillStyle = '#000'; x.fillRect(0, 0, cw, ch);
+    x.drawImage(src, 0, 0, cw, ch);
+    return new Promise(res => c.toBlob(res, 'image/jpeg', 0.78));
+  }
+  async function shrinkImage(file){
+    try{                                          // 縮めながら読む（これが一番軽い）
+      const bmp = await createImageBitmap(file, {resizeWidth: THUMB_W, resizeQuality: 'medium'});
+      const b = await drawToBlob(bmp, bmp.width, bmp.height);
+      bmp.close && bmp.close();
+      return b;
+    }catch{}
+    const url = URL.createObjectURL(file);        // 使えないブラウザ向けの道
+    try{
+      const im = new Image();
+      await new Promise((res, rej) => { im.onload = res; im.onerror = rej; im.src = url; });
+      return await drawToBlob(im, im.naturalWidth, im.naturalHeight);
+    }catch{ return null; }
+    finally{ URL.revokeObjectURL(url); }
+  }
+  async function shrinkVideo(file){
+    const url = URL.createObjectURL(file);
+    const v = document.createElement('video');
+    v.src = url; v.muted = true; v.playsInline = true; v.preload = 'auto';
+    try{
+      await new Promise((res, rej) => {
+        v.onloadeddata = res; v.onerror = rej; setTimeout(rej, 9000);
+      });
+      await new Promise(res => {
+        v.onseeked = res; setTimeout(res, 3000);
+        try{ v.currentTime = Math.min(0.5, (v.duration || 1) / 3); }catch{ res(); }
+      });
+      return await drawToBlob(v, v.videoWidth, v.videoHeight);
+    }catch{ return null; }
+    finally{ v.src = ''; URL.revokeObjectURL(url); }
+  }
+
+  async function thumbFor(it){
+    if(thumbs.has(it.rel)) return thumbs.get(it.rel);
+    if(pending.has(it.rel)) return pending.get(it.rel);
+    const p = (async () => {
+      const key = thumbKey(it);
+      let blob = await dbGet(key);                // 前に開いたときの焼き直しがあれば使う
+      if(!blob){
+        await slot();
+        try{ blob = it.video ? await shrinkVideo(it.file) : await shrinkImage(it.file); }
+        finally{ free(); }
+        if(blob) dbPut(key, blob);
+      }
+      if(!blob) return null;
+      const u = URL.createObjectURL(blob);
       thumbs.set(it.rel, u);
-      if(thumbs.size > 400){                      // 作りすぎないよう古いものから捨てる
+      if(thumbs.size > 1500){
         const k = thumbs.keys().next().value;
         URL.revokeObjectURL(thumbs.get(k)); thumbs.delete(k);
       }
-    }
-    return u;
+      return u;
+    })();
+    pending.set(it.rel, p);
+    const r = await p;
+    pending.delete(it.rel);
+    return r;
   }
-  function fillThumb(outer, it){
+
+  async function fillThumb(outer, it, big){
     const box = outer.querySelector('.gimg') || outer;
     if(it.audio){
       box.innerHTML = '<span class="snd">♪</span>';
       box.style.background = 'hsl(' + (hash(it.rel) % 360) + ',32%,20%)';
       return;
     }
-    const url = thumbUrl(it);
-    if(it.video){
-      const v = document.createElement('video');
-      v.src = url; v.preload = 'metadata'; v.muted = true; v.playsInline = true;
-      v.onloadedmetadata = () => { try{ v.currentTime = Math.min(0.2, (v.duration||1)/3); }catch{} };
-      box.appendChild(v);
-    } else {
-      const im = document.createElement('img'); im.src = url; im.alt = ''; box.appendChild(im);
+    if(big){                                      // 引き出しの大きい絵は元のまま見せる
+      const u = URL.createObjectURL(it.file);
+      const el = document.createElement(it.video ? 'video' : 'img');
+      el.src = u;
+      if(it.video){ el.muted = true; el.playsInline = true; el.preload = 'metadata'; }
+      box.appendChild(el);
+      setTimeout(() => URL.revokeObjectURL(u), 60000);
+      return;
     }
+    const url = await thumbFor(it);
+    if(!url){ box.innerHTML = '<span class="snd">?</span>'; return; }
+    const im = document.createElement('img');
+    im.src = url; im.alt = ''; im.decoding = 'async';
+    box.appendChild(im);
   }
 
   function tile(it){
@@ -1252,7 +1359,6 @@
     renderTags(tg, it, 3);
     el.appendChild(tg);
 
-    gal.tiles.set(it.rel, el);
     el.onclick = () => openFrom(it);
     el.ondragstart = e => { gal.drag = it; el.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; };
     el.ondragend = () => { el.classList.remove('dragging'); gal.drag = null;
@@ -1260,6 +1366,29 @@
     el.ondragover = e => { if(gal.drag && gal.drag !== it){ e.preventDefault(); el.classList.add('drop'); } };
     el.ondragleave = () => el.classList.remove('drop');
     el.ondrop = e => { e.preventDefault(); el.classList.remove('drop'); reorder(gal.drag, it); };
+    return el;
+  }
+
+  // 一度作ったタイルは取っておき、絞り込みのときは並べ替えるだけにする
+  function tileFor(it){
+    let el = gal.tiles.get(it.rel);
+    if(!el){
+      el = tile(it);
+      gal.tiles.set(it.rel, el);
+      if(gal.tiles.size > 1500){                 // 画面に無いものから捨てる
+        for(const [k, v] of gal.tiles){
+          if(v.parentNode) continue;
+          gal.tiles.delete(k);
+          if(gal.tiles.size <= 1200) break;
+        }
+      }
+    } else {
+      refreshTile(it);
+      const chk = el.querySelector('.gchk');
+      const on = gal.sel.has(it.rel);
+      chk.classList.toggle('on', on); chk.textContent = on ? '✓' : '';
+    }
+    el.classList.toggle('cur', items[order[pos]] === it);
     return el;
   }
 
@@ -1301,7 +1430,7 @@
     $('pMemo').value = memoOf(it);
     renderTags($('pTagView'), it, 99);
     const box = $('pThumb'); box.innerHTML = '<div class="gimg"></div>';
-    fillThumb(box, it);
+    fillThumb(box, it, true);
   }
   function closePanel(){ panelSave(); gal.panel = null; $('gPanel').hidden = true; }
   function panelStep(d){
@@ -1475,8 +1604,7 @@
 
   function drawGrid(){
     const grid = $('gGrid');
-    grid.innerHTML = '';
-    gal.tiles.clear();
+    grid.textContent = '';          // タイルは gal.tiles に残して使い回す
     gal.shown = 0;
     countUp();
     more();
@@ -1485,7 +1613,7 @@
     const grid = $('gGrid'), list = galList();
     const end = Math.min(list.length, gal.shown + 200);
     const frag = document.createDocumentFragment();
-    for(let i = gal.shown; i < end; i++) frag.appendChild(tile(list[i]));
+    for(let i = gal.shown; i < end; i++) frag.appendChild(tileFor(list[i]));
     const old = grid.querySelector('.gmore'); if(old) old.remove();
     grid.appendChild(frag);
     gal.shown = end;
@@ -1570,7 +1698,12 @@
   /* ---------- 一覧の操作 ---------- */
   $('bGal').onclick = openGallery;
   $('gClose').onclick = closeGallery;
-  $('gq').oninput = e => { gal.q = e.target.value; gal.shown = 0; drawGrid(); };
+  let qTimer;
+  $('gq').oninput = e => {
+    gal.q = e.target.value;
+    clearTimeout(qTimer);
+    qTimer = setTimeout(() => { gal.shown = 0; drawGrid(); }, 250);
+  };
   $('gSize').oninput = e => setThumbSize(+e.target.value);
   $('pClose').onclick = closePanel;
   $('pPrev').onclick = () => panelStep(-1);
@@ -1590,7 +1723,10 @@
     e.preventDefault();
     setThumbSize(tw - Math.sign(e.deltaY) * 20);
   }, {passive:false});
-  $('gq').onkeydown = e => { e.stopPropagation(); if(e.key === 'Escape'){ e.target.value=''; gal.q=''; drawGrid(); } };
+  $('gq').onkeydown = e => {
+    e.stopPropagation();
+    if(e.key === 'Escape'){ e.target.value = ''; gal.q = ''; clearTimeout(qTimer); gal.shown = 0; drawGrid(); }
+  };
   ['All','Fav','Sel'].forEach(v => {
     $('gView'+v).onclick = () => {
       gal.view = v.toLowerCase(); gal.shown = 0;
