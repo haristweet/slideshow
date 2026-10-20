@@ -1172,7 +1172,9 @@
   /* ---------- サムネイルは一度だけ作って取っておく ---------- */
   // 元の写真をそのまま縮めて出すと、150pxのタイルのために毎回フルサイズで
   // 展開することになる。横320pxに焼き直したものを作り、メモリと IndexedDB に置く。
-  const THUMB_W = 320;
+  // 画面の密度に合わせて焼く。Retina（2倍）では320pxのまま出すと引き伸ばしになって荒れる。
+  // いちばん大きいタイル（横420px）でも足りるよう、420×密度 を焼き幅にする。
+  const THUMB_W = Math.round(Math.min(window.devicePixelRatio || 1, 2) * 420);
   const pending = new Map();
   let busyN = 0; const waitQ = [];
   const slot = () => new Promise(res => {
@@ -1208,7 +1210,12 @@
   // 溜まりすぎたら、まるごと捨てて作り直す
   db().then(async () => {
     const c = await dbWork('readonly', st => st.count());
-    if(typeof c === 'number' && c > 8000) dbWork('readwrite', st => st.clear());
+    if(typeof c === 'number' && c > 8000){ dbWork('readwrite', st => st.clear()); return; }
+    const keys = await dbWork('readonly', st => st.getAllKeys());   // 幅が変わった古いものを捨てる
+    if(Array.isArray(keys)){
+      const stale = keys.filter(k => typeof k === 'string' && !k.endsWith('|' + THUMB_W));
+      if(stale.length) dbWork('readwrite', st => { stale.forEach(k => st.delete(k)); return st.count(); });
+    }
   });
 
   const thumbKey = it => folderKey + '|' + it.rel + '|' + it.file.size + '|' + (it.file.lastModified||0) + '|' + THUMB_W;
@@ -1221,11 +1228,11 @@
     const x = c.getContext('2d');
     x.fillStyle = '#000'; x.fillRect(0, 0, cw, ch);
     x.drawImage(src, 0, 0, cw, ch);
-    return new Promise(res => c.toBlob(res, 'image/jpeg', 0.78));
+    return new Promise(res => c.toBlob(res, 'image/jpeg', 0.86));
   }
   async function shrinkImage(file){
     try{                                          // 縮めながら読む（これが一番軽い）
-      const bmp = await createImageBitmap(file, {resizeWidth: THUMB_W, resizeQuality: 'medium'});
+      const bmp = await createImageBitmap(file, {resizeWidth: THUMB_W, resizeQuality: 'high'});
       const b = await drawToBlob(bmp, bmp.width, bmp.height);
       bmp.close && bmp.close();
       return b;
