@@ -130,7 +130,18 @@
   .gtree button.act{background:#22252c;color:var(--acc)}
   .gtree .n{color:#5d626c;margin-left:4px}
   .ggrid{flex:1 1 auto;overflow:auto;padding:12px;display:grid;gap:12px;align-content:start;
-    grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+    grid-template-columns:repeat(auto-fill,minmax(var(--tw,150px),1fr))}
+  .ggrid.sm{gap:8px}
+  .ggrid.sm .gfile{display:none}
+  .ggrid.sm .gt .gname{font-size:11px;padding:5px 7px 6px}
+  .ggrid.sm .gfav,.ggrid.sm .gchk{width:20px;height:20px;font-size:11px;top:4px}
+  .ggrid.sm .gfav{right:4px}
+  .ggrid.sm .gchk{left:4px}
+  #gSize{-webkit-appearance:none;appearance:none;width:90px;height:3px;border-radius:2px;
+    background:#3a3e47;outline:none}
+  #gSize::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;
+    background:var(--acc);cursor:pointer}
+  .gsize{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);white-space:nowrap}
   .gt{position:relative;border-radius:11px;overflow:hidden;background:#16181d;
     border:1px solid var(--line);cursor:pointer}
   .gt.cur{border-color:var(--acc)}
@@ -229,6 +240,9 @@
   <header class="gtop">
     <button class="gact" id="gClose">← 戻る</button>
     <input id="gq" type="search" placeholder="名前・ファイル名で絞り込む" autocomplete="off">
+    <span class="gsize" title="サムネイルの大きさ（− ＋ キー、⌘＋ホイールでも変わります）">
+      <span>大きさ</span><input type="range" id="gSize" min="90" max="360" step="10" value="150">
+    </span>
     <button class="gtab act" id="gViewAll">すべて</button>
     <button class="gtab" id="gViewFav">★</button>
     <button class="gtab" id="gViewSel">選択中</button>
@@ -265,7 +279,7 @@
       <kbd>M</kbd> 消音 ・ <kbd>↑</kbd><kbd>↓</kbd> 音量（動画に音があれば鳴ります）<br>
       ホイールで拡大 ・ ドラッグで動かす ・ <kbd>0</kbd> で戻す<br>
       <kbd>A</kbd> ASMRモード（同じフォルダの音声を流しながら絵を送る）<br>
-      <kbd>G</kbd> 一覧（名前を付ける・★・フォルダ移動・並べ替え）
+      <kbd>G</kbd> 一覧（名前を付ける・★・フォルダ移動・並べ替え）・一覧で <kbd>−</kbd> <kbd>＋</kbd> 大きさ
     </div>
     <div id="err"></div>
     <div id="last"></div>
@@ -305,7 +319,7 @@
   const S = {
     load(){ try{ return JSON.parse(localStorage.getItem('slideshow')||'{}'); }catch{ return {}; } },
     save(){ try{ localStorage.setItem('slideshow', JSON.stringify(
-      {interval, shuffle, sortMode, pair, muted, volume, asmr,
+      {interval, shuffle, sortMode, pair, muted, volume, asmr, tw,
        cover:document.body.classList.contains('cover')})); }catch{} }
   };
 
@@ -968,8 +982,11 @@
 
   document.addEventListener('keydown', e => {
     if(!picker.classList.contains('hidden')) return;
-    if(gal.open){                                  // 一覧の間は、閉じる操作だけ受ける
-      if(e.key === 'Escape' || (e.key.toLowerCase() === 'g' && e.target.tagName !== 'INPUT')) closeGallery();
+    if(gal.open){                                  // 一覧の間は、閉じる操作と大きさだけ受ける
+      if(e.target.tagName === 'INPUT'){ if(e.key === 'Escape') e.target.blur(); return; }
+      if(e.key === 'Escape' || e.key.toLowerCase() === 'g') closeGallery();
+      else if(e.key === '+' || e.key === ';' || e.key === '=') setThumbSize(tw + 20);
+      else if(e.key === '-') setThumbSize(tw - 20);
       return;
     }
     const k = e.key.toLowerCase();
@@ -1043,6 +1060,7 @@
 
   /* ---------- 一覧 ---------- */
   const gal = {open:false, q:'', view:'all', dir:'', sel:new Set(), drag:null, io:null, shown:0};
+  let tw = 150;                                   // サムネイルの一辺（px）
   let pf = {dir:'', view:'all', q:''};          // 再生側に効いている絞り込み
   const thumbs = new Map();
   const coll2 = new Intl.Collator(undefined,{numeric:true,sensitivity:'base'});
@@ -1197,6 +1215,16 @@
     toast('並びを覚えました（並び順「自分の順番」）', 2600);
   }
 
+  // サムネイルの大きさ。小さいときはファイル名を隠して詰める
+  function setThumbSize(v, save){
+    tw = Math.max(90, Math.min(360, Math.round(v / 10) * 10));
+    const grid = $('gGrid');
+    grid.style.setProperty('--tw', tw + 'px');
+    grid.classList.toggle('sm', tw < 130);
+    $('gSize').value = tw;
+    if(save !== false) S.save();
+  }
+
   function drawTree(){
     const all = everything();
     const dirs = new Map();
@@ -1279,6 +1307,7 @@
   function openGallery(){
     if(!items.length && !tracks.length) return;
     gal.open = true;
+    setThumbSize(tw, false);
     gal.dir = pf.dir; gal.view = pf.view; gal.q = pf.q;
     $('gq').value = gal.q;
     ['All','Fav','Sel'].forEach(v =>
@@ -1333,6 +1362,13 @@
   $('bGal').onclick = openGallery;
   $('gClose').onclick = closeGallery;
   $('gq').oninput = e => { gal.q = e.target.value; gal.shown = 0; drawGrid(); };
+  $('gSize').oninput = e => setThumbSize(+e.target.value);
+  // ⌘（Ctrl）＋ホイールでも大きさを変える。ふつうのホイールはそのまま巻物
+  $('gGrid').addEventListener('wheel', e => {
+    if(!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    setThumbSize(tw - Math.sign(e.deltaY) * 20);
+  }, {passive:false});
   $('gq').onkeydown = e => { e.stopPropagation(); if(e.key === 'Escape'){ e.target.value=''; gal.q=''; drawGrid(); } };
   ['All','Fav','Sel'].forEach(v => {
     $('gView'+v).onclick = () => {
@@ -1389,6 +1425,7 @@
   if(s.shuffle){ shuffle = true; $('bShuffle').classList.add('act'); }
   if(s.pair){ pair = true; $('bPair').classList.add('act'); }
   if(s.asmr){ asmr = true; $('bAsmr').classList.add('act'); }
+  if(typeof s.tw === 'number') setThumbSize(s.tw, false);
   if(s.cover){ document.body.classList.add('cover'); $('bFit').classList.add('act'); }
   if(s.muted) muted = true;
   if(typeof s.volume === 'number') volume = s.volume;
